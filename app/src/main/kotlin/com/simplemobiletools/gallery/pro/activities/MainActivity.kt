@@ -811,43 +811,111 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     }
 
     private fun toggleTreeMode() {
-        config.treeModeEnabled = !config.treeModeEnabled
+        val enabling = !config.treeModeEnabled
+        config.treeModeEnabled = enabling
+        if (enabling) {
+            config.viewTypeFoldersBeforeTree = config.viewTypeFolders
+            if (config.viewTypeFolders != VIEW_TYPE_LIST) {
+                config.viewTypeFolders = VIEW_TYPE_LIST
+            }
+        } else {
+            mDirs.forEach { it.treeDepth = 0 }
+            mDirsIgnoringSearch.forEach { it.treeDepth = 0 }
+            val previous = config.viewTypeFoldersBeforeTree
+            if (previous != 0) {
+                config.viewTypeFolders = previous
+                config.viewTypeFoldersBeforeTree = 0
+            }
+        }
+        setupLayoutManager()
         refreshMenuItems()
-        setupAdapter(getCurrentlyDisplayedDirs(), forceRecreate = true)
+        setupAdapter(mDirs.ifEmpty { mDirsIgnoringSearch }, forceRecreate = true)
     }
 
     /**
-     * Builds a nested tree from the currently known directories. Folders containing no media
-     * (directly or in any descendant) are stripped; the result is a flat list with [Directory.treeDepth]
-     * set so the adapter can render indentation. Remote servers act as the tree roots.
+     * Nested folder list for tree view. Albums nest under the closest ancestor that is also
+     * in the list. Sibling albums at different path depths still indent relative to the
+     * shallowest root. Favorites, Recycle Bin, and remote servers stay at depth 0.
+     * A visited set stops path cycles from overflowing the stack (which previously
+     * saved treeModeEnabled=true and then crashed on every launch).
      */
-    private fun getTreeDirectories(): ArrayList<Directory> {
-        val dirs = getCurrentlyDisplayedDirs().filter { it.path.isNotEmpty() && !it.isRemote }
-        val byParent = HashMap<String, ArrayList<Directory>>()
-        dirs.forEach { d ->
-            val parent = d.path.getParentPath()
-            byParent.getOrPut(parent) { ArrayList() }.add(d)
+    private fun getTreeDirectories(dirs: ArrayList<Directory>): ArrayList<Directory> {
+        val byPath = LinkedHashMap<String, Directory>()
+        dirs.filter { it.path.isNotEmpty() && !it.isRemote }.forEach { dir ->
+            byPath.putIfAbsent(dir.path, dir)
         }
-        val result = ArrayList<Directory>()
-        fun walk(parentPath: String, depth: Int) {
-            val children = byParent[parentPath]?.sortedBy { it.name.toLowerCase() } ?: return
-            for (child in children) {
-                val hasMedia = child.mediaCnt > 0
-                val descendantHasMedia = byParent[child.path]?.any { true } ?: false
-                // keep if it holds media or has a descendant that does
-                child.treeDepth = depth
-                child.containsMediaFilesDirectly = hasMedia
-                if (hasMedia || descendantHasMedia) {
-                    result.add(child)
-                    walk(child.path, depth + 1)
+
+        val result = ArrayList<Directory>(byPath.size + 4)
+        if (byPath.isNotEmpty()) {
+            val pathSet = byPath.keys
+
+            fun parentOf(path: String): String {
+                val parent = path.getParentPath()
+                return if (parent.isEmpty() || parent == path) "" else parent
+            }
+
+            fun closestAncestor(path: String): String? {
+                var current = parentOf(path)
+                val seen = HashSet<String>()
+                while (current.isNotEmpty() && seen.add(current)) {
+                    if (current in pathSet) {
+                        return current
+                    }
+                    current = parentOf(current)
+                }
+                return null
+            }
+
+            val children = HashMap<String, ArrayList<Directory>>()
+            val roots = ArrayList<Directory>()
+            for (dir in byPath.values) {
+                if (dir.areFavorites() || dir.isRecycleBin()) {
+                    roots.add(dir)
+                    continue
+                }
+                val ancestor = closestAncestor(dir.path)
+                if (ancestor == null) {
+                    roots.add(dir)
                 } else {
-                    // strip empty branches, but still recurse to surface any media further down
-                    walk(child.path, depth + 1)
+                    children.getOrPut(ancestor) { ArrayList() }.add(dir)
+                }
+            }
+
+            val visiting = HashSet<String>()
+            val visited = HashSet<String>()
+
+            fun walk(dir: Directory, depth: Int) {
+                if (depth > 24 || dir.path in visiting) {
+                    return
+                }
+                if (!visited.add(dir.path)) {
+                    return
+                }
+                visiting.add(dir.path)
+                dir.treeDepth = depth
+                dir.containsMediaFilesDirectly = dir.mediaCnt > 0
+                result.add(dir)
+                children[dir.path]?.sortedBy { it.name.lowercase() }?.forEach { child ->
+                    walk(child, depth + 1)
+                }
+                visiting.remove(dir.path)
+            }
+
+            val special = roots.filter { it.areFavorites() || it.isRecycleBin() }.sortedBy { it.name.lowercase() }
+            val otherRoots = roots.filter { !it.areFavorites() && !it.isRecycleBin() }
+            val minSlashes = otherRoots.minOfOrNull { root -> root.path.count { it == '/' } } ?: 0
+            special.forEach { walk(it, 0) }
+            otherRoots.sortedBy { it.path.lowercase() }.forEach { root ->
+                val extra = (root.path.count { it == '/' } - minSlashes).coerceIn(0, 8)
+                walk(root, extra)
+            }
+            byPath.values.forEach { dir ->
+                if (dir.path !in visited) {
+                    walk(dir, 0)
                 }
             }
         }
-        walk("", 0)
-        // prepend remote servers as roots
+
         result.addAll(0, getRemoteServerDirs().apply { forEach { it.treeDepth = 0 } })
         return result
     }
@@ -1340,10 +1408,21 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     private fun setupAdapter(dirs: ArrayList<Directory>, textToSearch: String = binding.mainMenu.getCurrentQuery(), forceRecreate: Boolean = false) {
         val currAdapter = binding.directoriesGrid.adapter
-        val sourceDirs = if (config.treeModeEnabled) getTreeDirectories() else dirs
-        val distinctDirs = sourceDirs.distinctBy { it.path.getDistinctPath() }.toMutableList() as ArrayList<Directory>
-        val sortedDirs = getSortedDirectories(distinctDirs)
-        var dirsToShow = getDirsToShow(sortedDirs, mDirs, mCurrentPathPrefix).clone() as ArrayList<Directory>
+        val distinctDirs = dirs.distinctBy { it.path.getDistinctPath() }.toMutableList() as ArrayList<Directory>
+        var dirsToShow = try {
+            if (config.treeModeEnabled) {
+                getTreeDirectories(distinctDirs)
+            } else {
+                distinctDirs.forEach { it.treeDepth = 0 }
+                val sortedDirs = getSortedDirectories(distinctDirs)
+                getDirsToShow(sortedDirs, mDirs, mCurrentPathPrefix).clone() as ArrayList<Directory>
+            }
+        } catch (_: Throwable) {
+            config.treeModeEnabled = false
+            distinctDirs.forEach { it.treeDepth = 0 }
+            val sortedDirs = getSortedDirectories(distinctDirs)
+            getDirsToShow(sortedDirs, mDirs, mCurrentPathPrefix).clone() as ArrayList<Directory>
+        }
 
         if (currAdapter == null || forceRecreate) {
             mDirsIgnoringSearch = dirs
@@ -1358,7 +1437,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
             ) {
                 val clickedDir = it as Directory
                 val path = clickedDir.path
-                if (clickedDir.subfoldersCount == 1 || !config.groupDirectSubfolders) {
+                if (config.treeModeEnabled || clickedDir.subfoldersCount == 1 || !config.groupDirectSubfolders) {
                     if (path != config.tempFolderPath) {
                         itemClicked(path)
                     }

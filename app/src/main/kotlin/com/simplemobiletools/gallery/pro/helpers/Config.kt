@@ -491,6 +491,10 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(TREE_MODE_ENABLED, false)
         set(treeModeEnabled) = prefs.edit().putBoolean(TREE_MODE_ENABLED, treeModeEnabled).apply()
 
+    var viewTypeFoldersBeforeTree: Int
+        get() = prefs.getInt(VIEW_TYPE_FOLDERS_BEFORE_TREE, 0)
+        set(viewTypeFoldersBeforeTree) = prefs.edit().putInt(VIEW_TYPE_FOLDERS_BEFORE_TREE, viewTypeFoldersBeforeTree).apply()
+
     var showWidgetFolderName: Boolean
         get() = prefs.getBoolean(SHOW_WIDGET_FOLDER_NAME, true)
         set(showWidgetFolderName) = prefs.edit().putBoolean(SHOW_WIDGET_FOLDER_NAME, showWidgetFolderName).apply()
