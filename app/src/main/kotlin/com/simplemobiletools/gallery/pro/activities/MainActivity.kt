@@ -624,30 +624,32 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     }
 
     private fun showTreeView() {
-        val includedPaths = config.includedFolders
-        val showHidden = config.shouldShowHidden
-        val allDirs = try {
-            directoryDB.getAll() as ArrayList<Directory>
-        } catch (e: Exception) {
-            ArrayList()
-        }
-
-        val roots = if (includedPaths.isNotEmpty()) {
-            includedPaths.filter { path ->
-                allDirs.any { it.path == path } || allDirs.any { it.path.startsWith("$path/") }
-            }.map { path ->
-                allDirs.firstOrNull { it.path == path } ?: Directory(null, path, "", path.getFilenameFromPath(), 0, 0L, 0L, 0L, 0, 0, "")
+        ensureBackgroundThread {
+            val includedPaths = config.includedFolders
+            val showHidden = config.shouldShowHidden
+            val allDirs = try {
+                directoryDB.getAll() as ArrayList<Directory>
+            } catch (e: Exception) {
+                ArrayList()
             }
-        } else {
-            val topPaths = allDirs.map { it.path }.distinct().map { it.substringBeforeLast("/") }.distinct()
-            topPaths.map { path ->
-                allDirs.firstOrNull { it.path == path } ?: Directory(null, path, "", path.getFilenameFromPath(), 0, 0L, 0L, 0L, 0, 0, "")
-            }
-        }
 
-        val treeItems = buildTree(roots, allDirs, showHidden)
-        runOnUiThread {
-            setupTreeAdapter(treeItems)
+            val roots = if (includedPaths.isNotEmpty()) {
+                includedPaths.filter { path ->
+                    allDirs.any { it.path == path } || allDirs.any { it.path.startsWith("$path/") }
+                }.map { path ->
+                    allDirs.firstOrNull { it.path == path } ?: Directory(null, path, "", path.getFilenameFromPath(), 0, 0L, 0L, 0L, 0, 0, "")
+                }
+            } else {
+                val topPaths = allDirs.map { it.path }.distinct().map { it.substringBeforeLast("/") }.distinct()
+                topPaths.map { path ->
+                    allDirs.firstOrNull { it.path == path } ?: Directory(null, path, "", path.getFilenameFromPath(), 0, 0L, 0L, 0L, 0, 0, "")
+                }
+            }
+
+            val treeItems = buildTree(roots, allDirs, showHidden)
+            runOnUiThread {
+                setupTreeAdapter(treeItems)
+            }
         }
     }
 
@@ -668,33 +670,34 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
             }.sortedBy { it.name.lowercase() }
         }
 
-        fun countMediaInSubtree(dir: Directory): Int {
-            return allDirs.count { it.path.startsWith("${dir.path}/") || it.path == dir.path }
-        }
-
         fun walkNode(dir: Directory, depth: Int) {
             val hasMedia = allPaths.contains(dir.path)
-            val children = getChildren(dir.path).filter { child ->
-                val subMedia = allDirs.count { it.path == child.path || it.path.startsWith("${child.path}/") }
-                subMedia > 0
+            val meaningfulChildren = getChildren(dir.path).filter { child ->
+                allDirs.any { it.path == child.path || it.path.startsWith("${child.path}/") }
             }
-
             val isExpanded = expandedPaths.contains(dir.path)
+            val childCount = meaningfulChildren.size
 
-            if (hasMedia || children.isNotEmpty()) {
-                result.add(com.simplemobiletools.gallery.pro.adapters.TreeAdapter.TreeItem(
-                    directory = dir,
-                    depth = depth,
-                    isExpanded = isExpanded,
-                    hasMedia = hasMedia,
-                    childCount = children.size
-                ))
+            // case 3: no media, no children → skip
+            if (!hasMedia && childCount == 0) return
+
+            // case 4: no media, only meaningful children → skip, promote children up
+            if (!hasMedia && childCount > 0) {
+                meaningfulChildren.forEach { child -> walkNode(child, depth) }
+                return
             }
+
+            // case 1 (has media, no children) or case 2 (has media + children)
+            result.add(com.simplemobiletools.gallery.pro.adapters.TreeAdapter.TreeItem(
+                directory = dir,
+                depth = depth,
+                isExpanded = isExpanded,
+                hasMedia = hasMedia,
+                childCount = childCount
+            ))
 
             if (isExpanded) {
-                children.forEach { child ->
-                    walkNode(child, depth + 1)
-                }
+                meaningfulChildren.forEach { child -> walkNode(child, depth + 1) }
             }
         }
 
