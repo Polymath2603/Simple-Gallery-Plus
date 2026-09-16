@@ -109,7 +109,6 @@ dependencies {
 
     implementation("com.github.naveensingh:androidphotofilters:193f2ae509")
     implementation(libs.bignerdranch.multiselector)
-    implementation(libs.commons.net)
     implementation(libs.android.image.cropper)
     implementation(libs.exif)
     implementation(libs.android.gif.drawable)

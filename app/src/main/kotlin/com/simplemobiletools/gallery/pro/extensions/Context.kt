@@ -545,26 +545,6 @@ fun Context.loadImageBase(
 
     WebpBitmapFactory.sUseSystemDecoder = false // CVE-2023-4863
 
-    // Remote (remote://) images: Glide's StringLoader cannot fetch them, so download to a temp
-    // file on a background thread first, then load that File. The download MUST NOT run on the
-    // main thread (that was the root cause of the earlier broken design).
-    if (path.startsWith("remote://")) {
-        ensureBackgroundThread {
-            val tempPath = RemoteClient.download(path, cacheDir)
-            Handler(Looper.getMainLooper()).post {
-                if (tempPath != null) {
-                    Glide.with(applicationContext).load(File(tempPath)).apply(options)
-                        .set(WebpDownsampler.USE_SYSTEM_DECODER, false)
-                        .transition(DrawableTransitionOptions.withCrossFade(crossFadeDuration))
-                        .into(target)
-                } else {
-                    target.setImageResource(com.simplemobiletools.commons.R.drawable.ic_place_vector)
-                }
-            }
-        }
-        return
-    }
-
     var builder = Glide.with(applicationContext)
         .load(path)
         .apply(options)

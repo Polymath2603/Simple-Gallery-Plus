@@ -37,7 +37,6 @@ import com.simplemobiletools.gallery.pro.extensions.parseFileChannel
 import com.simplemobiletools.gallery.pro.helpers.*
 import com.simplemobiletools.gallery.pro.models.Medium
 import com.simplemobiletools.gallery.pro.views.MediaSideScroll
-import com.simplemobiletools.gallery.pro.helpers.RemoteClient
 import androidx.media3.datasource.DefaultDataSource
 import java.io.File
 import java.io.FileInputStream
@@ -351,21 +350,6 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener, S
 
     private fun initExoPlayer() {
         if (activity == null || mConfig.openVideosOnSeparateScreen || mIsPanorama || mExoPlayer != null) {
-            return
-        }
-
-        if (mMedium.path.startsWith("remote://")) {
-            // download on a background thread, then play from the temp File
-            ensureBackgroundThread {
-                val tempPath = RemoteClient.download(mMedium.path, requireContext().cacheDir)
-                activity?.runOnUiThread {
-                    if (tempPath == null) {
-                        activity?.showErrorToast(Exception(getString(com.simplemobiletools.commons.R.string.unknown_error_occurred)))
-                    } else {
-                        startExoPlayerFromFile(tempPath)
-                    }
-                }
-            }
             return
         }
 

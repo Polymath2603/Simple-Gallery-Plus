@@ -97,16 +97,6 @@
         android:title="@string/unlock_folder"
         app:showAsAction="never" />
     <item
-        android:id="@+id/cab_encrypt"
-        android:showAsAction="never"
-        android:title="@string/encrypt_selection"
-        app:showAsAction="never" />
-    <item
-        android:id="@+id/cab_decrypt"
-        android:showAsAction="never"
-        android:title="@string/decrypt_selection"
-        app:showAsAction="never" />
-    <item
         android:id="@+id/cab_change_cover_image"
         android:showAsAction="never"
         android:title="@string/change_cover_image"

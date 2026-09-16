@@ -30,8 +30,6 @@ data class Medium(
     @Ignore var gridPosition: Int = 0   // used at grid view decoration at Grouping enabled
 ) : Serializable, ThumbnailItem() {
 
-    @Ignore var isRemoteDirectory: Boolean = false   // navigational remote folder entry (not a media file)
-
     constructor() : this(null, "", "", "", 0L, 0L, 0L, 0, 0, false, 0L, 0L, 0)
 
     companion object {

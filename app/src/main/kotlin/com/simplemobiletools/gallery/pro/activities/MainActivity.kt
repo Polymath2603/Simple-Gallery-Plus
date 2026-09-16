@@ -32,10 +32,8 @@ import com.simplemobiletools.gallery.pro.databinding.ActivityMainBinding
 import com.simplemobiletools.gallery.pro.dialogs.ChangeSortingDialog
 import com.simplemobiletools.gallery.pro.dialogs.ChangeViewTypeDialog
 import com.simplemobiletools.gallery.pro.dialogs.FilterMediaDialog
-import com.simplemobiletools.gallery.pro.dialogs.AddRemoteServerDialog
 import com.simplemobiletools.gallery.pro.dialogs.GrantAllFilesDialog
 import com.simplemobiletools.gallery.pro.helpers.*
-import com.simplemobiletools.gallery.pro.helpers.RemoteManager
 import com.simplemobiletools.gallery.pro.extensions.*
 import com.simplemobiletools.gallery.pro.interfaces.DirectoryOperationsListener
 import com.simplemobiletools.gallery.pro.jobs.NewPhotoFetcher
@@ -369,11 +367,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
             findItem(R.id.temporarily_show_excluded).isVisible = !config.temporarilyShowExcluded
             findItem(R.id.stop_showing_excluded).isVisible = config.temporarilyShowExcluded
-
-            val treeItem = findItem(R.id.tree_view)
-            if (treeItem != null) {
-                treeItem.isChecked = config.treeModeEnabled
-            }
         }
     }
 
@@ -412,8 +405,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 R.id.temporarily_show_excluded -> tryToggleTemporarilyShowExcluded()
                 R.id.stop_showing_excluded -> tryToggleTemporarilyShowExcluded()
                 R.id.create_new_folder -> createNewFolder()
-                R.id.add_remote_server -> addRemoteServer()
-                R.id.tree_view -> toggleTreeMode()
                 R.id.open_recycle_bin -> openRecycleBin()
                 R.id.column_count -> changeColumnCount()
                 R.id.set_as_default_folder -> setAsDefaultFolder()
@@ -802,81 +793,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         }
     }
 
-    private fun addRemoteServer() {
-        AddRemoteServerDialog(this) {
-            ensureBackgroundThread {
-                gotDirectories(addTempFolderIfNeeded(getCurrentlyDisplayedDirs()))
-            }
-        }.show()
-    }
-
-    private fun toggleTreeMode() {
-        config.treeModeEnabled = !config.treeModeEnabled
-        refreshMenuItems()
-        setupAdapter(getCurrentlyDisplayedDirs(), forceRecreate = true)
-    }
-
-    /**
-     * Builds a nested tree from the currently known directories. Folders containing no media
-     * (directly or in any descendant) are stripped; the result is a flat list with [Directory.treeDepth]
-     * set so the adapter can render indentation. Remote servers act as the tree roots.
-     */
-    private fun getTreeDirectories(): ArrayList<Directory> {
-        val dirs = getCurrentlyDisplayedDirs().filter { it.path.isNotEmpty() && !it.isRemote }
-        val byParent = HashMap<String, ArrayList<Directory>>()
-        dirs.forEach { d ->
-            val parent = d.path.getParentPath()
-            byParent.getOrPut(parent) { ArrayList() }.add(d)
-        }
-        val result = ArrayList<Directory>()
-        fun walk(parentPath: String, depth: Int) {
-            val children = byParent[parentPath]?.sortedBy { it.name.toLowerCase() } ?: return
-            for (child in children) {
-                val hasMedia = child.mediaCnt > 0
-                val descendantHasMedia = byParent[child.path]?.any { true } ?: false
-                // keep if it holds media or has a descendant that does
-                child.treeDepth = depth
-                child.containsMediaFilesDirectly = hasMedia
-                if (hasMedia || descendantHasMedia) {
-                    result.add(child)
-                    walk(child.path, depth + 1)
-                } else {
-                    // strip empty branches, but still recurse to surface any media further down
-                    walk(child.path, depth + 1)
-                }
-            }
-        }
-        walk("", 0)
-        // prepend remote servers as roots
-        result.addAll(0, getRemoteServerDirs().apply { forEach { it.treeDepth = 0 } })
-        return result
-    }
-
-    private fun getRemoteServerDirs(): ArrayList<Directory> {
-        val dirs = ArrayList<Directory>()
-        RemoteManager.getServers().forEach { server ->
-            val path = "remote://${server.id}"
-            val directory = Directory(
-                null,                       // id
-                path,                       // path
-                path,                       // tmb
-                server.name,                // name
-                0,                          // mediaCnt
-                0L,                         // modified
-                0L,                         // taken
-                0L,                         // size
-                0,                          // location
-                0,                          // types
-                "",                         // sortValue
-                0,                          // subfoldersCount
-                0,                          // subfoldersMediaCount
-                true                        // containsMediaFilesDirectly
-            ).apply { isRemote = true }
-            dirs.add(directory)
-        }
-        return dirs
-    }
-
     private fun changeColumnCount() {
         val items = ArrayList<RadioItem>()
         for (i in 1..MAX_COLUMN_COUNT) {
@@ -1023,8 +939,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         }
 
         val dirs = getSortedDirectories(newDirs)
-        // prepend remote servers (offline servers are simply absent from the list)
-        dirs.addAll(0, getRemoteServerDirs())
         if (config.groupDirectSubfolders) {
             mDirs = dirs.clone() as ArrayList<Directory>
         }
@@ -1340,7 +1254,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     private fun setupAdapter(dirs: ArrayList<Directory>, textToSearch: String = binding.mainMenu.getCurrentQuery(), forceRecreate: Boolean = false) {
         val currAdapter = binding.directoriesGrid.adapter
-        val sourceDirs = if (config.treeModeEnabled) getTreeDirectories() else dirs
+        val sourceDirs = dirs
         val distinctDirs = sourceDirs.distinctBy { it.path.getDistinctPath() }.toMutableList() as ArrayList<Directory>
         val sortedDirs = getSortedDirectories(distinctDirs)
         var dirsToShow = getDirsToShow(sortedDirs, mDirs, mCurrentPathPrefix).clone() as ArrayList<Directory>

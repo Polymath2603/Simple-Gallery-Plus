@@ -7,3 +7,6 @@
 /captures
 keystore.jks
 keystore.properties
+
+# local build artifacts
+/build_outputs/

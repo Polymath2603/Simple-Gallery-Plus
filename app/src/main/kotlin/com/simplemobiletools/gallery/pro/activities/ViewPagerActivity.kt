@@ -1335,18 +1335,9 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
         ensureBackgroundThread {
             val playUri: Uri
             val realPath: String
-            if (path.startsWith("remote://")) {
-                val temp = RemoteClient.download(path, cacheDir) ?: run {
-                    runOnUiThread { toast(com.simplemobiletools.commons.R.string.unknown_error_occurred) }
-                    return@ensureBackgroundThread
-                }
-                playUri = Uri.fromFile(File(temp))
-                realPath = "file://$temp"
-            } else {
-                val newUri = getFinalUriFromPath(path, BuildConfig.APPLICATION_ID) ?: return@ensureBackgroundThread
-                playUri = newUri
-                realPath = path
-            }
+            val newUri = getFinalUriFromPath(path, BuildConfig.APPLICATION_ID) ?: return@ensureBackgroundThread
+            playUri = newUri
+            realPath = path
             val mimeType = getUriMimeType(realPath, playUri)
             Intent().apply {
                 action = Intent.ACTION_VIEW

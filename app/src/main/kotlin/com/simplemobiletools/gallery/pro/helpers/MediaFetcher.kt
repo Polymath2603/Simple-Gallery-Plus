@@ -37,11 +37,6 @@ class MediaFetcher(val context: Context) {
         }
 
         val curMedia = ArrayList<Medium>()
-        if (curPath.startsWith("remote://")) {
-            // remote folders are fetched entirely on a background thread by the caller;
-            // this is the synchronous entry point used inside ensureBackgroundThread
-            return getRemoteMedia(curPath, isPickImage, isPickVideo, getVideoDurations)
-        }
         if (context.isPathOnOTG(curPath)) {
             if (context.hasOTGConnected()) {
                 val newMedia = getMediaOnOTG(curPath, isPickImage, isPickVideo, filterMedia, favoritePaths, getVideoDurations)
@@ -916,44 +911,5 @@ class MediaFetcher(val context: Context) {
             else -> R.string.portraits
         }
         return context.getString(stringId)
-    }
-
-    /**
-     * Builds the Medium list for a remote:// folder. MUST be called from a background thread
-     * (it does blocking FTP I/O via RemoteClient). Subfolders are emitted as directory entries
-     * (isRemoteDirectory=true) and placed on top of the media, exactly like local folders.
-     */
-    private fun getRemoteMedia(
-        curPath: String, isPickImage: Boolean, isPickVideo: Boolean, getVideoDurations: Boolean
-    ): ArrayList<Medium> {
-        val entries = RemoteClient.list(curPath) ?: return ArrayList()
-        val result = ArrayList<Medium>()
-        val mediaTypes = context.config.filterMedia
-
-        val dirs = entries.filter { it.isDirectory }.map {
-            Medium(null, it.name, it.path, curPath, it.modified, it.modified, it.size, TYPE_IMAGES, 0, false, 0L, 0L, 0).apply {
-                isRemoteDirectory = true
-            }
-        }
-        val files = entries.filter { !it.isDirectory }.mapNotNull { e ->
-            val type = when {
-                e.name.isImageFast() -> TYPE_IMAGES
-                e.name.isVideoFast() -> TYPE_VIDEOS
-                e.name.isGif() -> TYPE_GIFS
-                e.name.isRawFast() -> TYPE_RAWS
-                e.name.isSvg() -> TYPE_SVGS
-                e.name.isPortrait() -> TYPE_PORTRAITS
-                else -> -1
-            }
-            if (type == -1) return@mapNotNull null
-            if (isPickImage && type != TYPE_IMAGES) return@mapNotNull null
-            if (isPickVideo && type != TYPE_VIDEOS) return@mapNotNull null
-            if (mediaTypes != 0 && type != -1 && (mediaTypes and type) == 0) return@mapNotNull null
-            Medium(null, e.name, e.path, curPath, e.modified, e.modified, e.size, type, 0, false, 0L, 0L, 0)
-        }
-        // folders on top, then media
-        result.addAll(dirs)
-        result.addAll(files)
-        return result
     }
 }

@@ -769,8 +769,6 @@ class DirectoryAdapter(
 
     private fun setupView(view: View, directory: Directory, holder: ViewHolder) {
         val isSelected = selectedKeys.contains(directory.path.hashCode())
-        // tree mode: indent nested folders according to their depth
-        view.setPadding(directory.treeDepth * 48, view.paddingTop, view.paddingRight, view.paddingBottom)
         bindItem(view).apply {
             dirPath?.text = "${directory.path.substringBeforeLast("/")}/"
             val thumbnailType = when {

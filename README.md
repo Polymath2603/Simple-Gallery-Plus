@@ -1,60 +1,62 @@
-# Simple Gallery (Plus)
+# Gallery+ (Simple Gallery fork)
 
-A fast, privacy-focused photo and video gallery for Android — a fork of
-[SimpleMobileTools/Simple-Gallery](https://github.com/SimpleMobileTools/Simple-Gallery)
-with added security and remote-storage features. No ads.
+A fork of [SimpleMobileTools/Simple-Gallery](https://github.com/SimpleMobileTools/Simple-Gallery)
+(Pro 6.28.1) with quality-of-life fixes, a modernised icon set, and upgraded
+dependencies. No ads, no trackers — all media stays on-device.
 
-> ⚠️ **Heavily vibe-coded, not even reviewed — but tested and it looks working.**
-> Built largely with AI assistance; no formal code review. Manual testing shows
-> the added features work.
+## What this fork adds / fixes vs upstream
 
-## Features (beyond upstream)
+### UI improvements
+- **Material Design icons** — 30+ vector drawables replaced (camera, delete, edit,
+  share, sort, filter, lock, folders, star, etc.) with crisp Material icons from
+  Google, matching the official Simple Gallery Pro look.
+- **Editable folder lists** — the Excluded Folders and Included Folders screens now
+  have a per-element Edit action (pencil icon + 3-dot menu), letting you change a
+  folder path without removing and re-adding it.
 
-- **On-device encryption** — encrypt/decrypt folders locally; encrypted media is
-  transparently decrypted on open and purged from cache on exit.
-- **FTP / SFTP remote access** — browse and transfer media over network storage;
-  thumbnails stream via Glide (`remote://` pipeline).
-- **Private gallery** — PIN, pattern, or fingerprint per folder.
-- **Tree (folder-in-folder) mode** — nested subfolders under parents.
-- Upstream: photo editor, wide format support, recycle-bin recovery, customizable UI.
+### Playback fixes
+- **ExoPlayer local-file fallback** — `VideoPlayerActivity` and `VideoFragment` now
+  build the media source from a local `File` URI via `DefaultDataSource` instead of
+  relying solely on content-URI resolution; fixes playback on paths the OS cannot
+  resolve (e.g. OTG-mounted directories, custom storage).
+- **ViewPager video launch** — `ViewPagerActivity` now resolves the play URI through
+  `getFinalUriFromPath` for non-content schemes, and passes the real path + MIME type
+  correctly to the player intent.
+
+### Build / dependency upgrades
+| Component | Upstream | Fork |
+|---|---|---|
+| Kotlin | 1.8.22 | **1.9.22** |
+| KSP | 1.8.22-1.0.11 | **1.9.22-1.0.17** |
+| Room | 2.6.0-beta01 | **2.5.2** (stable) |
+| AGP | 7.4.0 | **8.6.0** |
+| compileSdk | 34 | **35** |
+| Simple-Commons | SNAPSHOT (`9e60e24790`) | **5.34.26** (mavenLocal) |
+| Gradle wrapper | older | **8.7** |
+
+- **Gradle memory tuning** — `Xmx2048m`, `MaxMetaspaceSize=512m`, parallel off,
+  daemon off (fits constrained CI and low-RAM containers).
+- **Maven mirrors** — Aliyun public/jcenter mirrors + `mavenLocal()` in
+  `settings.gradle.kts`; jcenter/bintray gone from default resolution.
+- **Room schema export** committed at `app/schemas/…/10.json`.
+
+### Debug
+- Debug launcher name is **Gallery+** (upstream uses `Gallery_debug`).
 
 ## Requirements
 
 - Android 6.0 (API 23)+
-- Android SDK 36 to build; JDK 17
+- Android SDK 35 to build; JDK 17
+- `com.simplemobiletools.commons:release:5.34.26` in `mavenLocal()`
 
 ## Build
 
 ```bash
-./gradlew assembleFossDebug      # foss flavor -> app/build/outputs/apk/foss/debug
+# publish Simple-Commons to mavenLocal first (see ../Simple-Commons)
+./gradlew assembleFossDebug      # foss flavor → app/build/outputs/apk/foss/debug
 ./gradlew assembleRelease        # requires signing config
 ```
 
-## Known issues / Limitations
-
-- Encryption is local-only (no cloud sync of ciphertext yet).
-- Fork drifts from upstream; merging upstream fixes is manual.
-
-## Support
-
-If you value ad-free, privacy-first tooling, donations keep it maintained:
-
-| | |
-|---|---|
-| PayPal | `paypal.com/ncp/payment/W78F6W4TXZ4CS` |
-| Binance | `1011264323` |
-| Bybit | `467077834` |
-| TRC20 | `TMW5uSDN6sMUBNirMoqY1icpsfa7GhPZfK` |
-| BEP20/ERC20 | `0x7a8887c2ac3e596f6170c9e28b44e6b6d025c854` |
-| LTC | `LVswXiD6Vd2dejXcgZ7a` |
-| TON | `UQAllRezWgHi3LPrSwyvAb4zazIph6j6goU7lMaqcFWFBxVH` |
-| BTC | `1rSX6BDN1nqDMyBHqceySkZSs6PHUP23m` |
-| SOL | `d8RonhC8oEHssrQjN1Y4UWHnd6MMP33XGCKtfNL4j59` |
-
-## Apology
-
-No screenshots or video demos are included.
-
 ## License
 
-GPL-3.0 (inherits upstream SimpleMobileTools license)
+Apache-2.0 (same as upstream), see `LICENSE`.

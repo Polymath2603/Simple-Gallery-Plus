@@ -487,10 +487,6 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(GROUP_DIRECT_SUBFOLDERS, false)
         set(groupDirectSubfolders) = prefs.edit().putBoolean(GROUP_DIRECT_SUBFOLDERS, groupDirectSubfolders).apply()
 
-    var treeModeEnabled: Boolean
-        get() = prefs.getBoolean(TREE_MODE_ENABLED, false)
-        set(treeModeEnabled) = prefs.edit().putBoolean(TREE_MODE_ENABLED, treeModeEnabled).apply()
-
     var showWidgetFolderName: Boolean
         get() = prefs.getBoolean(SHOW_WIDGET_FOLDER_NAME, true)
         set(showWidgetFolderName) = prefs.edit().putBoolean(SHOW_WIDGET_FOLDER_NAME, showWidgetFolderName).apply()

@@ -808,16 +808,6 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         val path = medium.path
         hideKeyboard()
 
-        // remote subfolder → drill deeper into the same server
-        if (path.startsWith("remote://") && medium.isRemoteDirectory) {
-            Intent(this, MediaActivity::class.java).apply {
-                putExtra(DIRECTORY, path)
-                putExtra(SKIP_AUTHENTICATION, true)
-                startActivity(this)
-            }
-            return
-        }
-
         if (isSetWallpaperIntent()) {
             toast(R.string.setting_wallpaper)
 
@@ -911,25 +901,6 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     override fun tryDeleteFiles(fileDirItems: ArrayList<FileDirItem>, skipRecycleBin: Boolean) {
         val filtered = fileDirItems.filter { !getIsPathDirectory(it.path) && it.path.isMediaFile() } as ArrayList
         if (filtered.isEmpty()) {
-            return
-        }
-
-        // remote files: delete directly on the server (no local recycle bin)
-        if (filtered.all { it.path.startsWith("remote://") }) {
-            val paths = filtered.map { it.path }
-            val deletingItems = resources.getQuantityString(com.simplemobiletools.commons.R.plurals.deleting_items, filtered.size, filtered.size)
-            toast(deletingItems)
-            ensureBackgroundThread {
-                val allOk = paths.all { RemoteClient.delete(it) }
-                runOnUiThread {
-                    if (allOk) {
-                        mMedia.removeAll { paths.contains((it as? Medium)?.path) }
-                        refreshItems()
-                    } else {
-                        toast(com.simplemobiletools.commons.R.string.unknown_error_occurred)
-                    }
-                }
-            }
             return
         }
 

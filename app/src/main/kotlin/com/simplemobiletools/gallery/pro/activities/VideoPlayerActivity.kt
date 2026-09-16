@@ -28,7 +28,6 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.simplemobiletools.commons.extensions.*
 import com.simplemobiletools.commons.helpers.ensureBackgroundThread
-import com.simplemobiletools.gallery.pro.helpers.RemoteClient
 import java.io.File
 import com.simplemobiletools.gallery.pro.R
 import com.simplemobiletools.gallery.pro.databinding.ActivityVideoPlayerBinding
@@ -237,22 +236,6 @@ open class VideoPlayerActivity : SimpleActivity(), SeekBar.OnSeekBarChangeListen
 
     private fun initExoPlayer() {
         val rawUri = mUri ?: return
-        val isRemote = rawUri.scheme == "remote"
-
-        if (isRemote) {
-            // download on a background thread, then build the player from a local File source
-            ensureBackgroundThread {
-                val tempPath = RemoteClient.download(rawUri.toString(), cacheDir)
-                runOnUiThread {
-                    if (tempPath == null) {
-                        showErrorToast(Exception(getString(com.simplemobiletools.commons.R.string.unknown_error_occurred)))
-                    } else {
-                        startExoPlayerFromFile(tempPath)
-                    }
-                }
-            }
-            return
-        }
 
         val dataSpec = DataSpec(rawUri)
         val fileDataSource = ContentDataSource(applicationContext)

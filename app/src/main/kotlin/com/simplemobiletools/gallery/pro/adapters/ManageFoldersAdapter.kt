@@ -1,7 +1,10 @@
 package com.simplemobiletools.gallery.pro.adapters
 
 import android.view.*
+import android.widget.EditText
 import android.widget.PopupMenu
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.view.ContextThemeWrapper
 import com.simplemobiletools.commons.activities.BaseSimpleActivity
 import com.simplemobiletools.commons.adapters.MyRecyclerViewAdapter
 import com.simplemobiletools.commons.extensions.getPopupMenuTheme
@@ -9,6 +12,7 @@ import com.simplemobiletools.commons.extensions.getProperTextColor
 import com.simplemobiletools.commons.extensions.setupViewBackground
 import com.simplemobiletools.commons.interfaces.RefreshRecyclerViewListener
 import com.simplemobiletools.commons.views.MyRecyclerView
+import com.simplemobiletools.gallery.pro.R
 import com.simplemobiletools.gallery.pro.databinding.ItemManageFolderBinding
 import com.simplemobiletools.gallery.pro.extensions.config
 
@@ -23,13 +27,14 @@ class ManageFoldersAdapter(
         setupDragListener(true)
     }
 
-    override fun getActionMenuId() = com.simplemobiletools.commons.R.menu.cab_remove_only
+    override fun getActionMenuId() = R.menu.cab_manage_folders
 
     override fun prepareActionMode(menu: Menu) {}
 
     override fun actionItemPressed(id: Int) {
         when (id) {
             com.simplemobiletools.commons.R.id.cab_remove -> removeSelection()
+            R.id.cab_edit_folder -> editSelection()
         }
     }
 
@@ -58,8 +63,6 @@ class ManageFoldersAdapter(
     }
 
     override fun getItemCount() = folders.size
-
-    private fun getSelectedItems() = folders.filter { selectedKeys.contains(it.hashCode()) } as ArrayList<String>
 
     private fun setupView(view: View, folder: String) {
         ItemManageFolderBinding.bind(view).apply {
@@ -96,6 +99,11 @@ class ManageFoldersAdapter(
                             removeSelection()
                         }
                     }
+                    R.id.cab_edit_folder -> {
+                        executeItemMenuOperation(eventTypeId) {
+                            editSelection()
+                        }
+                    }
                 }
                 true
             }
@@ -107,6 +115,45 @@ class ManageFoldersAdapter(
         selectedKeys.clear()
         selectedKeys.add(eventTypeId)
         callback()
+    }
+
+    private fun editSelection() {
+        val selectedPaths = getSelectedItems()
+        if (selectedPaths.size != 1) return
+        val oldPath = selectedPaths.firstOrNull() ?: return
+
+        val editText = EditText(activity).apply {
+            setText(oldPath)
+            setSelectAllOnFocus(true)
+            setPadding(64, 32, 64, 16)
+        }
+
+        AlertDialog.Builder(activity, activity.getPopupMenuTheme()).apply {
+            setTitle(R.string.edit_folder)
+            setView(editText)
+            setPositiveButton(com.simplemobiletools.commons.R.string.ok, null)
+            setNegativeButton(com.simplemobiletools.commons.R.string.cancel, null)
+            create().apply {
+                show()
+                getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val newPath = editText.text.toString().trim()
+                    if (newPath.isNotEmpty() && newPath != oldPath) {
+                        val index = folders.indexOf(oldPath)
+                        if (index >= 0) folders[index] = newPath
+
+                        if (isShowingExcludedFolders) {
+                            config.removeExcludedFolder(oldPath)
+                            config.addExcludedFolder(newPath)
+                        } else {
+                            config.removeIncludedFolder(oldPath)
+                            config.addIncludedFolder(newPath)
+                        }
+                        listener?.refreshItems()
+                    }
+                    dismiss()
+                }
+            }
+        }
     }
 
     private fun removeSelection() {
@@ -127,5 +174,15 @@ class ManageFoldersAdapter(
         if (folders.isEmpty()) {
             listener?.refreshItems()
         }
+    }
+
+    private fun getSelectedItems(): ArrayList<String> {
+        val selectedItems = ArrayList<String>()
+        selectedKeys.forEach { key ->
+            folders.firstOrNull { it.hashCode() == key }?.let {
+                selectedItems.add(it)
+            }
+        }
+        return selectedItems
     }
 }
