@@ -121,7 +121,6 @@ class SearchActivity : SimpleActivity(), MediaOperationsListener {
             }.apply {
                 binding.searchGrid.adapter = this
             }
-            setupLayoutManager()
             handleGridSpacing(mAllMedia)
         } else if (mLastSearchedText.isEmpty()) {
             (currAdapter as MediaAdapter).updateMedia(mAllMedia)

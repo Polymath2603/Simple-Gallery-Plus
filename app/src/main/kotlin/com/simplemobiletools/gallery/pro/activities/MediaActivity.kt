@@ -33,7 +33,9 @@ import com.simplemobiletools.gallery.pro.dialogs.*
 import com.simplemobiletools.gallery.pro.extensions.*
 import com.simplemobiletools.gallery.pro.helpers.*
 import com.simplemobiletools.gallery.pro.interfaces.MediaOperationsListener
+import com.simplemobiletools.gallery.pro.models.Directory
 import com.simplemobiletools.gallery.pro.models.Medium
+import com.simplemobiletools.gallery.pro.models.SubfolderItem
 import com.simplemobiletools.gallery.pro.models.ThumbnailItem
 import com.simplemobiletools.gallery.pro.models.ThumbnailSection
 import java.io.File
@@ -240,6 +242,14 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     override fun onBackPressed() {
         if (binding.mediaMenu.isSearchOpen) {
             binding.mediaMenu.closeSearch()
+        } else if (config.treeMode && mPath.isNotEmpty()) {
+            val parentPath = mPath.substringBeforeLast("/")
+            val includedRoots = config.includedFolders
+            if (parentPath.isNotEmpty() && !includedRoots.contains(mPath)) {
+                openSubfolder(parentPath)
+            } else {
+                super.onBackPressed()
+            }
         } else {
             super.onBackPressed()
         }
@@ -425,7 +435,8 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             initZoomListener()
             MediaAdapter(
                 this, mMedia.clone() as ArrayList<ThumbnailItem>, this, mIsGetImageIntent || mIsGetVideoIntent || mIsGetAnyIntent,
-                mAllowPickingMultiple, mPath, binding.mediaGrid
+                mAllowPickingMultiple, mPath, binding.mediaGrid,
+                subfolderClick = { subPath -> openSubfolder(subPath) }
             ) {
                 if (it is Medium && !isFinishing) {
                     itemClicked(it)
@@ -871,7 +882,17 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     private fun gotMedia(media: ArrayList<ThumbnailItem>, isFromCache: Boolean) {
         mIsGettingMedia = false
         checkLastMediaChanged()
-        mMedia = media
+
+        val mediaWithSubfolders = if (config.treeMode && mPath.isNotEmpty() && mPath != RECYCLE_BIN && !mShowAll) {
+            val subfolders = getImmediateSubfolders(mPath)
+            val result = ArrayList<ThumbnailItem>(subfolders.size + media.size)
+            result.addAll(subfolders)
+            result.addAll(media)
+            result
+        } else {
+            media
+        }
+        mMedia = mediaWithSubfolders
 
         runOnUiThread {
             binding.mediaRefreshLayout.isRefreshing = false
@@ -896,6 +917,35 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                 }
             }.start()
         }
+    }
+
+    private fun getImmediateSubfolders(path: String): ArrayList<SubfolderItem> {
+        val result = ArrayList<SubfolderItem>()
+        val allDirs = try {
+            directoryDB.getAll() as ArrayList<Directory>
+        } catch (e: Exception) {
+            ArrayList()
+        }
+        val showHidden = config.shouldShowHidden
+        allDirs.filter {
+            it.path.startsWith("$path/") &&
+                !it.path.substringAfter("$path/").contains('/') &&
+                (showHidden || !it.path.getFilenameFromPath().startsWith("."))
+        }.forEach { dir ->
+            result.add(SubfolderItem(dir))
+        }
+        result.sortBy { it.directory.name.lowercase() }
+        return result
+    }
+
+    private fun openSubfolder(subPath: String) {
+        if (mPath == subPath) return
+        mPath = subPath
+        mMedia.clear()
+        binding.mediaGrid.adapter = null
+        mLoadedInitialPhotos = false
+        getMedia()
+        binding.mediaMenu.getToolbar()?.title = subPath.getFilenameFromPath()
     }
 
     override fun tryDeleteFiles(fileDirItems: ArrayList<FileDirItem>, skipRecycleBin: Boolean) {

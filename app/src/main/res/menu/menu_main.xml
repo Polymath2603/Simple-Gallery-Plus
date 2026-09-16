@@ -14,6 +14,11 @@
         android:title="@string/show_all"
         app:showAsAction="always" />
     <item
+        android:id="@+id/tree_mode"
+        android:icon="@drawable/ic_tree_vector"
+        android:title="@string/tree_mode"
+        app:showAsAction="always" />
+    <item
         android:id="@+id/sort"
         android:icon="@drawable/ic_sort_vector"
         android:title="@string/sort_by"

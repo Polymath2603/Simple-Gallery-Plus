@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.core.view.allViews
 import com.bumptech.glide.Glide
+import com.bumptech.glide.signature.ObjectKey
 import com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller
 import com.simplemobiletools.commons.activities.BaseSimpleActivity
 import com.simplemobiletools.commons.adapters.MyRecyclerViewAdapter
@@ -30,12 +31,15 @@ import com.simplemobiletools.gallery.pro.extensions.*
 import com.simplemobiletools.gallery.pro.helpers.*
 import com.simplemobiletools.gallery.pro.interfaces.MediaOperationsListener
 import com.simplemobiletools.gallery.pro.models.Medium
+import com.simplemobiletools.gallery.pro.models.SubfolderItem
 import com.simplemobiletools.gallery.pro.models.ThumbnailItem
 import com.simplemobiletools.gallery.pro.models.ThumbnailSection
 
 class MediaAdapter(
     activity: BaseSimpleActivity, var media: ArrayList<ThumbnailItem>, val listener: MediaOperationsListener?, val isAGetIntent: Boolean,
-    val allowMultiplePicks: Boolean, val path: String, recyclerView: MyRecyclerView, itemClick: (Any) -> Unit
+    val allowMultiplePicks: Boolean, val path: String, recyclerView: MyRecyclerView,
+    private val subfolderClick: (String) -> Unit = {},
+    itemClick: (Any) -> Unit
 ) :
     MyRecyclerViewAdapter(activity, recyclerView, itemClick), RecyclerViewFastScroller.OnPopupTextUpdate {
 
@@ -44,6 +48,7 @@ class MediaAdapter(
     private val ITEM_SECTION = 0
     private val ITEM_MEDIUM_VIDEO_PORTRAIT = 1
     private val ITEM_MEDIUM_PHOTO = 2
+    private val ITEM_SUBFOLDER = 3
 
     private val config = activity.config
     private val viewType = config.getFolderViewType(if (config.showAll) SHOW_ALL else path)
@@ -75,6 +80,8 @@ class MediaAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = if (viewType == ITEM_SECTION) {
             ThumbnailSectionBinding.inflate(layoutInflater, parent, false)
+        } else if (viewType == ITEM_SUBFOLDER) {
+            ItemTreeFolderBinding.inflate(layoutInflater, parent, false)
         } else {
             if (isListViewType) {
                 if (viewType == ITEM_MEDIUM_PHOTO) {
@@ -101,10 +108,10 @@ class MediaAdapter(
 
         val allowLongPress = (!isAGetIntent || allowMultiplePicks) && tmbItem is Medium
         holder.bindView(tmbItem, tmbItem is Medium, allowLongPress) { itemView, adapterPosition ->
-            if (tmbItem is Medium) {
-                setupThumbnail(itemView, tmbItem)
-            } else {
-                setupSection(itemView, tmbItem as ThumbnailSection)
+            when (tmbItem) {
+                is Medium -> setupThumbnail(itemView, tmbItem)
+                is SubfolderItem -> setupSubfolder(itemView, tmbItem)
+                else -> setupSection(itemView, tmbItem as ThumbnailSection)
             }
         }
         bindViewHolder(holder)
@@ -115,6 +122,7 @@ class MediaAdapter(
     override fun getItemViewType(position: Int): Int {
         val tmbItem = media[position]
         return when {
+            tmbItem is SubfolderItem -> ITEM_SUBFOLDER
             tmbItem is ThumbnailSection -> ITEM_SECTION
             (tmbItem as Medium).isVideo() || tmbItem.isPortrait() -> ITEM_MEDIUM_VIDEO_PORTRAIT
             else -> ITEM_MEDIUM_PHOTO
@@ -699,6 +707,39 @@ class MediaAdapter(
         ThumbnailSectionBinding.bind(view).apply {
             thumbnailSection.text = section.title
             thumbnailSection.setTextColor(textColor)
+        }
+    }
+
+    private fun setupSubfolder(view: View, item: SubfolderItem) {
+        ItemTreeFolderBinding.bind(view).apply {
+            val dir = item.directory
+
+            treeName.text = dir.name
+            treeName.setTextColor(textColor)
+
+            treeMediaCount.text = "${dir.mediaCnt}"
+            treeMediaCount.setTextColor(textColor)
+            treeMediaCount.beVisibleIf(dir.mediaCnt > 0)
+
+            treeExpandArrow.beGone()
+
+            val thumbnailType = when {
+                dir.tmb.isVideoFast() -> TYPE_VIDEOS
+                dir.tmb.isGif() -> TYPE_GIFS
+                dir.tmb.isRawFast() -> TYPE_RAWS
+                dir.tmb.isSvg() -> TYPE_SVGS
+                else -> TYPE_IMAGES
+            }
+            if (dir.tmb.isNotEmpty()) {
+                activity.loadImage(
+                    thumbnailType, dir.tmb, treeThumbnail, false, false, true, 20, ObjectKey(dir.path)
+                )
+            }
+
+            indentView.layoutParams.width = 0
+            view.setOnClickListener {
+                subfolderClick(dir.path)
+            }
         }
     }
 

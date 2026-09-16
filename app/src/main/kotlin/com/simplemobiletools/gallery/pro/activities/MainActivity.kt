@@ -27,6 +27,7 @@ import com.simplemobiletools.commons.views.MyRecyclerView
 import com.simplemobiletools.gallery.pro.BuildConfig
 import com.simplemobiletools.gallery.pro.R
 import com.simplemobiletools.gallery.pro.adapters.DirectoryAdapter
+import com.simplemobiletools.gallery.pro.adapters.TreeAdapter
 import com.simplemobiletools.gallery.pro.databases.GalleryDatabase
 import com.simplemobiletools.gallery.pro.databinding.ActivityMainBinding
 import com.simplemobiletools.gallery.pro.dialogs.ChangeSortingDialog
@@ -76,6 +77,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     private var mLastMediaFetcher: MediaFetcher? = null
     private var mDirs = ArrayList<Directory>()
     private var mDirsIgnoringSearch = ArrayList<Directory>()
+    private var mExpandedTreePaths = setOf<String>()
 
     private var mStoredAnimateGifs = true
     private var mStoredCropThumbnails = true
@@ -399,6 +401,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 R.id.filter -> showFilterMediaDialog()
                 R.id.open_camera -> launchCamera()
                 R.id.show_all -> showAllMedia()
+                R.id.tree_mode -> toggleTreeMode()
                 R.id.change_view_type -> changeViewType()
                 R.id.temporarily_show_hidden -> tryToggleTemporarilyShowHidden()
                 R.id.stop_showing_hidden -> tryToggleTemporarilyShowHidden()
@@ -545,6 +548,13 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
         mShouldStopFetching = true
         mIsGettingDirs = true
+
+        if (config.treeMode) {
+            mIsGettingDirs = false
+            showTreeView()
+            return
+        }
+
         val getImagesOnly = mIsPickImageIntent || mIsGetImageContentIntent
         val getVideosOnly = mIsPickVideoIntent || mIsGetVideoContentIntent
 
@@ -600,6 +610,127 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 startActivity(this)
                 finish()
             }
+        }
+    }
+
+    private fun toggleTreeMode() {
+        config.treeMode = !config.treeMode
+        if (config.treeMode) {
+            config.showAll = false
+            showTreeView()
+        } else {
+            getDirectories()
+        }
+    }
+
+    private fun showTreeView() {
+        val includedPaths = config.includedFolders
+        val showHidden = config.shouldShowHidden
+        val allDirs = try {
+            directoryDB.getAll() as ArrayList<Directory>
+        } catch (e: Exception) {
+            ArrayList()
+        }
+
+        val roots = if (includedPaths.isNotEmpty()) {
+            includedPaths.filter { path ->
+                allDirs.any { it.path == path } || allDirs.any { it.path.startsWith("$path/") }
+            }.map { path ->
+                allDirs.firstOrNull { it.path == path } ?: Directory(null, path, "", path.getFilenameFromPath(), 0, 0L, 0L, 0L, 0, 0, "")
+            }
+        } else {
+            val topPaths = allDirs.map { it.path }.distinct().map { it.substringBeforeLast("/") }.distinct()
+            topPaths.map { path ->
+                allDirs.firstOrNull { it.path == path } ?: Directory(null, path, "", path.getFilenameFromPath(), 0, 0L, 0L, 0L, 0, 0, "")
+            }
+        }
+
+        val treeItems = buildTree(roots, allDirs, showHidden)
+        runOnUiThread {
+            setupTreeAdapter(treeItems)
+        }
+    }
+
+    private fun buildTree(
+        roots: List<Directory>,
+        allDirs: ArrayList<Directory>,
+        showHidden: Boolean,
+        expandedPaths: Set<String> = mExpandedTreePaths
+    ): ArrayList<com.simplemobiletools.gallery.pro.adapters.TreeAdapter.TreeItem> {
+        val result = ArrayList<com.simplemobiletools.gallery.pro.adapters.TreeAdapter.TreeItem>()
+        val allPaths = allDirs.map { it.path }.toSet()
+
+        fun getChildren(parentPath: String): List<Directory> {
+            return allDirs.filter {
+                it.path.startsWith("$parentPath/") &&
+                    !it.path.substringAfter("$parentPath/").contains('/') &&
+                    (showHidden || !it.path.getFilenameFromPath().startsWith("."))
+            }.sortedBy { it.name.lowercase() }
+        }
+
+        fun countMediaInSubtree(dir: Directory): Int {
+            return allDirs.count { it.path.startsWith("${dir.path}/") || it.path == dir.path }
+        }
+
+        fun walkNode(dir: Directory, depth: Int) {
+            val hasMedia = allPaths.contains(dir.path)
+            val children = getChildren(dir.path).filter { child ->
+                val subMedia = allDirs.count { it.path == child.path || it.path.startsWith("${child.path}/") }
+                subMedia > 0
+            }
+
+            val isExpanded = expandedPaths.contains(dir.path)
+
+            if (hasMedia || children.isNotEmpty()) {
+                result.add(com.simplemobiletools.gallery.pro.adapters.TreeAdapter.TreeItem(
+                    directory = dir,
+                    depth = depth,
+                    isExpanded = isExpanded,
+                    hasMedia = hasMedia,
+                    childCount = children.size
+                ))
+            }
+
+            if (isExpanded) {
+                children.forEach { child ->
+                    walkNode(child, depth + 1)
+                }
+            }
+        }
+
+        val sortedRoots = roots.sortedBy { it.name.lowercase() }
+        sortedRoots.forEach { root ->
+            walkNode(root, 0)
+        }
+
+        return result
+    }
+
+    private fun setupTreeAdapter(items: ArrayList<com.simplemobiletools.gallery.pro.adapters.TreeAdapter.TreeItem>) {
+        if (binding.directoriesGrid.adapter is com.simplemobiletools.gallery.pro.adapters.TreeAdapter) {
+            (binding.directoriesGrid.adapter as com.simplemobiletools.gallery.pro.adapters.TreeAdapter).updateItems(items)
+        } else {
+            binding.directoriesGrid.adapter = null
+            val treeAdapter = com.simplemobiletools.gallery.pro.adapters.TreeAdapter(
+                this,
+                items,
+                binding.directoriesGrid,
+                onFolderClick = { path ->
+                    itemClicked(path)
+                },
+                onExpandToggle = { position ->
+                    val item = (binding.directoriesGrid.adapter as com.simplemobiletools.gallery.pro.adapters.TreeAdapter).treeItems.getOrNull(position)
+                    if (item != null) {
+                        if (item.isExpanded) {
+                            mExpandedTreePaths = mExpandedTreePaths - item.directory.path
+                        } else {
+                            mExpandedTreePaths = mExpandedTreePaths + item.directory.path
+                        }
+                        showTreeView()
+                    }
+                }
+            )
+            binding.directoriesGrid.adapter = treeAdapter
         }
     }
 

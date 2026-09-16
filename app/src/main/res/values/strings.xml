@@ -40,6 +40,7 @@
     <string name="excluded">(excluded)</string>
     <string name="pin_to_the_top">Pin to the top</string>
     <string name="show_all">Show all folders content</string>
+    <string name="tree_mode">Tree view</string>
     <string name="all_folders">All folders</string>
     <string name="folder_view">Switch to folder view</string>
     <string name="other_folder">Other folder</string>

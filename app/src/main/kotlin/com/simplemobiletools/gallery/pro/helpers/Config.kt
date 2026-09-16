@@ -87,6 +87,10 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(SHOW_ALL, false)
         set(showAll) = prefs.edit().putBoolean(SHOW_ALL, showAll).apply()
 
+    var treeMode: Boolean
+        get() = prefs.getBoolean(TREE_MODE, false)
+        set(treeMode) = prefs.edit().putBoolean(TREE_MODE, treeMode).apply()
+
     fun addPinnedFolders(paths: Set<String>) {
         val currPinnedFolders = HashSet<String>(pinnedFolders)
         currPinnedFolders.addAll(paths)
