@@ -18,6 +18,7 @@ import com.bumptech.glide.request.transition.Transition
 import com.simplemobiletools.commons.dialogs.ConfirmationDialog
 import com.simplemobiletools.commons.dialogs.CreateNewFolderDialog
 import com.simplemobiletools.commons.dialogs.RadioGroupDialog
+import com.simplemobiletools.commons.dialogs.SecurityDialog
 import com.simplemobiletools.commons.extensions.*
 import com.simplemobiletools.commons.helpers.*
 import com.simplemobiletools.commons.models.FileDirItem
@@ -228,6 +229,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        clearKeepScreenOnIfNeeded()
         if (config.showAll && !isChangingConfigurations) {
             config.temporarilyShowHidden = false
             config.tempSkipDeleteConfirmation = false
@@ -242,15 +244,21 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     override fun onBackPressed() {
         if (binding.mediaMenu.isSearchOpen) {
             binding.mediaMenu.closeSearch()
-        } else if (config.treeMode && mPath.isNotEmpty()) {
-            val parentPath = mPath.substringBeforeLast("/")
-            val includedRoots = config.includedFolders
-            if (parentPath.isNotEmpty() && !includedRoots.contains(mPath)) {
-                openSubfolder(parentPath)
-            } else {
+        } else if (config.treeMode && mPath.isNotEmpty() && mPath != RECYCLE_BIN && mPath != FAVORITES && !mShowAll) {
+            // walk up the hierarchy, stop at included-folder roots or storage roots
+            val parentPath = mPath.getParentPath()
+            val isAtRoot = config.includedFolders.contains(mPath) ||
+                parentPath.isEmpty() ||
+                parentPath == "/" ||
+                isAStorageRootFolder(parentPath)
+            if (isAtRoot) {
+                clearKeepScreenOnIfNeeded()
                 super.onBackPressed()
+            } else {
+                openSubfolder(parentPath)
             }
         } else {
+            clearKeepScreenOnIfNeeded()
             super.onBackPressed()
         }
     }
@@ -290,6 +298,44 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             val viewType = config.getFolderViewType(if (mShowAll) SHOW_ALL else mPath)
             findItem(R.id.column_count).isVisible = viewType == VIEW_TYPE_GRID
             findItem(R.id.toggle_filename).isVisible = viewType == VIEW_TYPE_GRID
+
+            findItem(R.id.keep_screen_on).isVisible = !config.temporarilyKeepScreenOn
+            findItem(R.id.stop_keeping_screen_on).isVisible = config.temporarilyKeepScreenOn
+
+            // per-content-type menu customization: separate hidden-item sets for image vs video folders
+            val hasVideos = mMedia.any { it is Medium && it.isVideo() }
+            applyHiddenEntryNames(this@MediaActivity, if (hasVideos) config.getHiddenVideoMenuItems() else config.getHiddenImageMenuItems())
+        }
+    }
+
+    private fun customizeMediaMenu() {
+        val isVideoFolder = mMedia.any { it is Medium && it.isVideo() }
+        val items = listOf(
+            MenuItemVisibilityDialog.Item("sort", com.simplemobiletools.commons.R.string.sort_by),
+            MenuItemVisibilityDialog.Item("filter", R.string.filter_media),
+            MenuItemVisibilityDialog.Item("toggle_filename", R.string.toggle_filename),
+            MenuItemVisibilityDialog.Item("folder_view", R.string.folder_view),
+            MenuItemVisibilityDialog.Item("change_view_type", R.string.change_view_type),
+            MenuItemVisibilityDialog.Item("group", R.string.group_by),
+            MenuItemVisibilityDialog.Item("column_count", R.string.column_count),
+            MenuItemVisibilityDialog.Item("slideshow", R.string.slideshow),
+            MenuItemVisibilityDialog.Item("open_camera", R.string.open_camera),
+            MenuItemVisibilityDialog.Item("create_new_folder", com.simplemobiletools.commons.R.string.create_new_folder),
+            MenuItemVisibilityDialog.Item("open_recycle_bin", R.string.open_the_recycle_bin),
+            MenuItemVisibilityDialog.Item("temporarily_show_hidden", com.simplemobiletools.commons.R.string.temporarily_show_hidden),
+            MenuItemVisibilityDialog.Item("keep_screen_on", R.string.keep_screen_on),
+            MenuItemVisibilityDialog.Item("set_as_default_folder", R.string.set_as_default_folder),
+            MenuItemVisibilityDialog.Item("settings", com.simplemobiletools.commons.R.string.settings),
+            MenuItemVisibilityDialog.Item("about", com.simplemobiletools.commons.R.string.about)
+        )
+        val currentHidden = if (isVideoFolder) config.getHiddenVideoMenuItems() else config.getHiddenImageMenuItems()
+        MenuItemVisibilityDialog(this, items, currentHidden) { hidden ->
+            if (isVideoFolder) {
+                config.setHiddenVideoMenuItems(hidden)
+            } else {
+                config.setHiddenImageMenuItems(hidden)
+            }
+            refreshMenuItems()
         }
     }
 
@@ -324,6 +370,9 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                 R.id.set_as_default_folder -> setAsDefaultFolder()
                 R.id.unset_as_default_folder -> unsetAsDefaultFolder()
                 R.id.slideshow -> startSlideshow()
+                R.id.keep_screen_on -> toggleKeepScreenOn(true)
+                R.id.stop_keeping_screen_on -> toggleKeepScreenOn(false)
+                R.id.customize_menu -> customizeMediaMenu()
                 R.id.settings -> launchSettings()
                 R.id.about -> launchAbout()
                 else -> return@setOnMenuItemClickListener false
@@ -630,26 +679,30 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
 
     private fun isDirEmpty(): Boolean {
         return if (mMedia.size <= 0 && config.filterMedia > 0) {
-            if (mPath != FAVORITES && mPath != RECYCLE_BIN) {
-                deleteDirectoryIfEmpty()
-                deleteDBDirectory()
-            }
+            // in tree mode the folder can still contain subfolders with media, do not treat it as empty
+            val hasSubfolders = config.treeMode && mPath != FAVORITES && mPath != RECYCLE_BIN && getImmediateSubfolders(mPath).isNotEmpty()
+            if (!hasSubfolders) {
+                if (mPath != FAVORITES && mPath != RECYCLE_BIN) {
+                    deleteDirectoryIfEmpty()
+                    deleteDBDirectory()
+                }
 
-            if (mPath == FAVORITES) {
-                ensureBackgroundThread {
-                    directoryDB.deleteDirPath(FAVORITES)
+                if (mPath == FAVORITES) {
+                    ensureBackgroundThread {
+                        directoryDB.deleteDirPath(FAVORITES)
+                    }
+                }
+
+                if (mPath == RECYCLE_BIN) {
+                    binding.mediaEmptyTextPlaceholder.setText(com.simplemobiletools.commons.R.string.no_items_found)
+                    binding.mediaEmptyTextPlaceholder.beVisible()
+                    binding.mediaEmptyTextPlaceholder2.beGone()
+                } else {
+                    finish()
                 }
             }
 
-            if (mPath == RECYCLE_BIN) {
-                binding.mediaEmptyTextPlaceholder.setText(com.simplemobiletools.commons.R.string.no_items_found)
-                binding.mediaEmptyTextPlaceholder.beVisible()
-                binding.mediaEmptyTextPlaceholder2.beGone()
-            } else {
-                finish()
-            }
-
-            true
+            !hasSubfolders
         } else {
             false
         }
@@ -714,7 +767,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         val adapter = getMediaAdapter()
         layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
             override fun getSpanSize(position: Int): Int {
-                return if (adapter?.isASectionTitle(position) == true) {
+                return if (adapter?.isFullSpanItem(position) == true) {
                     layoutManager.spanCount
                 } else {
                     1
@@ -883,21 +936,24 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         mIsGettingMedia = false
         checkLastMediaChanged()
 
-        val mediaWithSubfolders = if (config.treeMode && mPath.isNotEmpty() && mPath != RECYCLE_BIN && !mShowAll) {
-            val subfolders = getImmediateSubfolders(mPath)
-            val result = ArrayList<ThumbnailItem>(subfolders.size + media.size)
-            result.addAll(subfolders)
-            result.addAll(media)
-            result
+        val subfolders = if (config.treeMode && mPath.isNotEmpty() && mPath != RECYCLE_BIN && !mShowAll) {
+            getImmediateSubfolders(mPath)
         } else {
-            media
+            ArrayList()
         }
+
+        val mediaWithSubfolders = ArrayList<ThumbnailItem>(subfolders.size + media.size)
+        mediaWithSubfolders.addAll(subfolders)
+        mediaWithSubfolders.addAll(media)
         mMedia = mediaWithSubfolders
+
+        // a folder can be empty of media yet have subfolders with media, do not treat that as empty
+        val isEmpty = subfolders.isEmpty() && media.isEmpty()
 
         runOnUiThread {
             binding.mediaRefreshLayout.isRefreshing = false
-            binding.mediaEmptyTextPlaceholder.beVisibleIf(media.isEmpty() && !isFromCache)
-            binding.mediaEmptyTextPlaceholder2.beVisibleIf(media.isEmpty() && !isFromCache)
+            binding.mediaEmptyTextPlaceholder.beVisibleIf(isEmpty && !isFromCache)
+            binding.mediaEmptyTextPlaceholder2.beVisibleIf(isEmpty && !isFromCache)
 
             if (binding.mediaEmptyTextPlaceholder.isVisible()) {
                 binding.mediaEmptyTextPlaceholder.text = getString(R.string.no_media_with_filters)
@@ -917,35 +973,93 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                 }
             }.start()
         }
-    }
-
+    }    // child folders of the currently opened folder, taken from the filesystem so folders never
+    // show up empty; only folders that directly contain at least one media file are listed
     private fun getImmediateSubfolders(path: String): ArrayList<SubfolderItem> {
         val result = ArrayList<SubfolderItem>()
-        val allDirs = try {
-            directoryDB.getAll() as ArrayList<Directory>
-        } catch (e: Exception) {
-            ArrayList()
-        }
-        val showHidden = config.shouldShowHidden
-        allDirs.filter {
-            it.path.startsWith("$path/") &&
-                !it.path.substringAfter("$path/").contains('/') &&
-                (showHidden || !it.path.getFilenameFromPath().startsWith("."))
-        }.forEach { dir ->
-            result.add(SubfolderItem(dir))
-        }
+        val showHidden = config.shouldShowHidden || config.temporarilyShowHidden
+        val folder = File(path)
+        val children = folder.listFiles() ?: return result
+
+        children.filter { it.isDirectory }
+            .filter { showHidden || !it.name.startsWith(".") }
+            .filter { dir -> config.excludedFolders.none { dir.absolutePath.startsWith(it) } }
+            .filter { dir -> dir.listFiles()?.any { it.isFile && it.absolutePath.isMediaFile() } == true }
+            .forEach { dir ->
+                val mediaCnt = dir.listFiles()?.count { it.isFile && it.absolutePath.isMediaFile() } ?: 0
+                val tmb = dir.listFiles()?.firstOrNull { it.isFile && it.absolutePath.isMediaFile() }?.absolutePath ?: ""
+                result.add(SubfolderItem(Directory(null, dir.absolutePath, "", dir.name, mediaCnt, dir.lastModified(), 0L, dir.lastModified(), getPathLocation(dir.absolutePath), 0, tmb)))
+            }
         result.sortBy { it.directory.name.lowercase() }
         return result
     }
 
     private fun openSubfolder(subPath: String) {
         if (mPath == subPath) return
+        // encrypted child folders ask for the lock secret and open from a decrypted temp copy
+        if (config.isFolderEncrypted(subPath)) {
+            SecurityDialog(this, config.getFolderProtectionHash(subPath), config.getFolderProtectionType(subPath)) { hash, _, success ->
+                if (!success || hash.isNullOrEmpty()) {
+                    return@SecurityDialog
+                }
+
+                toast(R.string.decrypting)
+                ensureBackgroundThread {
+                    val tempCacheFolder = File(cacheDir, "temp_decrypted/${File(subPath).name}")
+                    tempCacheFolder.deleteRecursively()
+                    tempCacheFolder.mkdirs()
+
+                    File(subPath).listFiles()?.forEach { file ->
+                        if (file.isFile && file.name.endsWith(".enc")) {
+                            EncryptionHelper.decryptFile(this, file, File(tempCacheFolder, file.name.removeSuffix(".enc")), hash)
+                        }
+                    }
+
+                    runOnUiThread {
+                        openSubfolderInternal(tempCacheFolder.absolutePath)
+                    }
+                }
+            }
+            return
+        }
+
+        // a locked child folder asks for its own credentials before opening
+        if (config.isFolderProtected(subPath)) {
+            handleLockedFolderOpening(subPath) { success ->
+                if (success) {
+                    openSubfolderInternal(subPath)
+                }
+            }
+            return
+        }
+        openSubfolderInternal(subPath)
+    }
+
+    private fun openSubfolderInternal(subPath: String) {
         mPath = subPath
         mMedia.clear()
         binding.mediaGrid.adapter = null
         mLoadedInitialPhotos = false
         getMedia()
         binding.mediaMenu.getToolbar()?.title = subPath.getFilenameFromPath()
+    }
+
+    // temporary "keep screen on" from the media menu: only lasts while this screen is visible
+    private fun toggleKeepScreenOn(keepOn: Boolean) {
+        config.temporarilyKeepScreenOn = keepOn
+        if (keepOn) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        refreshMenuItems()
+    }
+
+    private fun clearKeepScreenOnIfNeeded() {
+        if (config.temporarilyKeepScreenOn) {
+            config.temporarilyKeepScreenOn = false
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 
     override fun tryDeleteFiles(fileDirItems: ArrayList<FileDirItem>, skipRecycleBin: Boolean) {

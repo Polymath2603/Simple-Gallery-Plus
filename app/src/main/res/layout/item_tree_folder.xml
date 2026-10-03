@@ -54,7 +54,7 @@
         android:layout_alignParentEnd="true"
         android:layout_centerVertical="true"
         android:layout_marginEnd="@dimen/medium_margin"
-        android:textColor="@android:color/tertiary_text_light"
+        android:alpha="0.6"
         android:textSize="@dimen/small_text_size" />
 
 </RelativeLayout>

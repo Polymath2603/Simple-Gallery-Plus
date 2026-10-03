@@ -21,6 +21,9 @@ import com.google.gson.Gson
 import com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller
 import com.simplemobiletools.commons.activities.BaseSimpleActivity
 import com.simplemobiletools.commons.adapters.MyRecyclerViewAdapter
+import android.widget.CheckBox
+import android.view.LayoutInflater
+import androidx.appcompat.app.AlertDialog
 import com.simplemobiletools.commons.dialogs.*
 import com.simplemobiletools.commons.extensions.*
 import com.simplemobiletools.commons.helpers.*
@@ -45,7 +48,8 @@ import com.simplemobiletools.gallery.pro.models.Directory
 import java.io.File
 import java.util.*
 
-class DirectoryAdapter(
+// the same item rendering is used for both folder list and tree view modes
+open class DirectoryAdapter(
     activity: BaseSimpleActivity, var dirs: ArrayList<Directory>, val listener: DirectoryOperationsListener?, recyclerView: MyRecyclerView,
     val isPickIntent: Boolean, val swipeRefreshLayout: SwipeRefreshLayout? = null, itemClick: (Any) -> Unit
 ) :
@@ -69,7 +73,6 @@ class DirectoryAdapter(
     var directorySorting = config.directorySorting
     var dateFormat = config.dateFormat
     var timeFormat = activity.getTimeFormat()
-
     init {
         setupDragListener(true)
         fillLockedFolders()
@@ -93,6 +96,11 @@ class DirectoryAdapter(
             setupView(itemView, dir, holder)
         }
         bindViewHolder(holder)
+    }
+
+    // single place where a folder tap is handled
+    protected open fun handleFolderClick(dir: Directory) {
+        itemClick.invoke(dir)
     }
 
     override fun getItemCount() = dirs.size
@@ -122,6 +130,8 @@ class DirectoryAdapter(
             checkHideBtnVisibility(this, selectedPaths)
             checkPinBtnVisibility(this, selectedPaths)
         }
+
+        menu.applyHiddenEntryNames(activity, config.getHiddenFolderMenuItems())
     }
 
     override fun actionItemPressed(id: Int) {
@@ -180,6 +190,32 @@ class DirectoryAdapter(
         super.onViewRecycled(holder)
         if (!activity.isDestroyed) {
             Glide.with(activity).clear(bindItem(holder.itemView).dirThumbnail)
+        }
+    }
+
+    // ---- folder encryption is part of the lock flow ----
+    // locking a folder with the "encrypt" toggle checked also encrypts its files with the
+    // lock pattern/pin hash as the secret; unlocking decrypts them again in place.
+
+    private fun encryptFolder(path: String, secret: String) {
+        val folder = File(path)
+        folder.listFiles()?.forEach { file ->
+            if (file.isFile && !file.name.endsWith(".enc")) {
+                val outputFile = File(path, "${file.name}.enc")
+                EncryptionHelper.encryptFile(activity, file, outputFile, secret)
+                file.delete()
+            }
+        }
+    }
+
+    private fun decryptFolder(path: String, secret: String) {
+        val folder = File(path)
+        folder.listFiles()?.forEach { file ->
+            if (file.isFile && file.name.endsWith(".enc")) {
+                val outputFile = File(path, file.name.removeSuffix(".enc"))
+                EncryptionHelper.decryptFile(activity, file, outputFile, secret)
+                file.delete()
+            }
         }
     }
 
@@ -432,24 +468,56 @@ class DirectoryAdapter(
 
     private fun tryLockFolder() {
         if (config.wasFolderLockingNoticeShown) {
-            lockFolder()
+            showLockFolderDialog()
         } else {
             FolderLockingNoticeDialog(activity) {
-                lockFolder()
+                showLockFolderDialog()
             }
         }
     }
 
-    private fun lockFolder() {
+    // lock flow with an integrated "encrypt contents" toggle: the same pattern/pin set here
+    // is used as the encryption secret, so unlocking the folder also decrypts its files
+    private fun showLockFolderDialog() {
+        val view = LayoutInflater.from(activity).inflate(R.layout.dialog_lock_folder_options, null)
+        val encryptCheckbox = view.findViewById<CheckBox>(R.id.encrypt_checkbox)
+
+        AlertDialog.Builder(activity)
+            .setTitle(R.string.lock_folder)
+            .setView(view)
+            .setPositiveButton(com.simplemobiletools.commons.R.string.ok) { _, _ ->
+                lockFolder(encryptCheckbox.isChecked)
+            }
+            .setNegativeButton(com.simplemobiletools.commons.R.string.cancel, null)
+            .show()
+    }
+
+    private fun lockFolder(shouldEncrypt: Boolean) {
         SecurityDialog(activity, "", SHOW_ALL_TABS) { hash, type, success ->
             if (success) {
-                getSelectedPaths().filter { !config.isFolderProtected(it) }.forEach {
+                val paths = getSelectedPaths().filter { !config.isFolderProtected(it) }
+                paths.forEach {
                     config.addFolderProtection(it, hash, type)
                     lockedFolderPaths.add(it)
                 }
 
-                listener?.refreshItems()
-                finishActMode()
+                if (shouldEncrypt) {
+                    activity.toast(R.string.encrypting)
+                    ensureBackgroundThread {
+                        paths.forEach { path ->
+                            encryptFolder(path, hash)
+                            config.addEncryptedFolder(path)
+                        }
+                        activity.runOnUiThread {
+                            activity.toast(R.string.encryption_finished)
+                            listener?.refreshItems()
+                            finishActMode()
+                        }
+                    }
+                } else {
+                    listener?.refreshItems()
+                    finishActMode()
+                }
             }
         }
     }
@@ -461,14 +529,35 @@ class DirectoryAdapter(
         val hashToCheck = config.getFolderProtectionHash(firstPath)
         SecurityDialog(activity, hashToCheck, tabToShow) { hash, type, success ->
             if (success) {
-                paths.filter { config.isFolderProtected(it) && config.getFolderProtectionType(it) == tabToShow && config.getFolderProtectionHash(it) == hashToCheck }
-                    .forEach {
+                val unlockPaths = paths.filter { config.isFolderProtected(it) && config.getFolderProtectionType(it) == tabToShow && config.getFolderProtectionHash(it) == hashToCheck }
+                val encryptedPaths = unlockPaths.filter { config.isFolderEncrypted(it) }
+
+                if (encryptedPaths.isNotEmpty()) {
+                    // unlocking an encrypted folder decrypts its files with the same secret
+                    activity.toast(R.string.decrypting)
+                    ensureBackgroundThread {
+                        encryptedPaths.forEach { path ->
+                            decryptFolder(path, hash)
+                            config.removeEncryptedFolder(path)
+                        }
+                        activity.runOnUiThread {
+                            activity.toast(R.string.decryption_finished)
+                            unlockPaths.forEach {
+                                config.removeFolderProtection(it)
+                                lockedFolderPaths.remove(it)
+                            }
+                            listener?.refreshItems()
+                            finishActMode()
+                        }
+                    }
+                } else {
+                    unlockPaths.forEach {
                         config.removeFolderProtection(it)
                         lockedFolderPaths.remove(it)
                     }
-
-                listener?.refreshItems()
-                finishActMode()
+                    listener?.refreshItems()
+                    finishActMode()
+                }
             }
         }
     }

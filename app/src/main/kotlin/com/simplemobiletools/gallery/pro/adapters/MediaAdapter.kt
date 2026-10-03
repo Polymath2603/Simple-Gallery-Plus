@@ -213,6 +213,9 @@ class MediaAdapter(
 
     fun isASectionTitle(position: Int) = media.getOrNull(position) is ThumbnailSection
 
+    // section titles and subfolder rows both take the full row width in grid mode
+    fun isFullSpanItem(position: Int) = isASectionTitle(position) || media.getOrNull(position) is SubfolderItem
+
     private fun checkHideBtnVisibility(menu: Menu, selectedItems: ArrayList<Medium>) {
         val isInRecycleBin = selectedItems.firstOrNull()?.getIsInRecycleBin() == true
         menu.findItem(R.id.cab_hide).isVisible = (!isRPlus() || isExternalStorageManager()) && !isInRecycleBin && selectedItems.any { !it.isHidden() }

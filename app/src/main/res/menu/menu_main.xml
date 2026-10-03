@@ -10,13 +10,8 @@
         app:showAsAction="always" />
     <item
         android:id="@+id/show_all"
-        android:icon="@drawable/ic_folders_vector"
-        android:title="@string/show_all"
-        app:showAsAction="always" />
-    <item
-        android:id="@+id/tree_mode"
         android:icon="@drawable/ic_tree_vector"
-        android:title="@string/tree_mode"
+        android:title="@string/tree_view"
         app:showAsAction="always" />
     <item
         android:id="@+id/sort"

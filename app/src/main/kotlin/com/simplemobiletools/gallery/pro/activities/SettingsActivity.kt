@@ -75,6 +75,11 @@ class SettingsActivity : SimpleActivity() {
         setupExcludedItemPasswordProtection()
         setupAppPasswordProtection()
         setupFileDeletionPasswordProtection()
+        setupDisableLockHapticFeedback()
+        setupCustomizeMainMenu()
+        setupCustomizeFolderMenu()
+        setupCustomizeImageMenu()
+        setupCustomizeVideoMenu()
         setupDeleteEmptyFolders()
         setupAllowPhotoGestures()
         setupAllowVideoGestures()
@@ -435,6 +440,102 @@ class SettingsActivity : SimpleActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun setupDisableLockHapticFeedback() {
+        binding.settingsDisableLockHapticFeedback.isChecked = config.disableLockHapticFeedback
+        binding.settingsDisableLockHapticFeedbackHolder.setOnClickListener {
+            binding.settingsDisableLockHapticFeedback.toggle()
+            config.disableLockHapticFeedback = binding.settingsDisableLockHapticFeedback.isChecked
+        }
+    }
+
+    // show/hide individual menu items, separately for the main screen, the folder selection
+    // menu, and the media screen (with separate sets for image and video folders)
+    private fun setupCustomizeMainMenu() {
+        binding.settingsCustomizeMainMenuHolder.setOnClickListener {
+            val items = listOf(
+                MenuItemVisibilityDialog.Item("sort", com.simplemobiletools.commons.R.string.sort_by),
+                MenuItemVisibilityDialog.Item("filter", R.string.filter_media),
+                MenuItemVisibilityDialog.Item("show_all", R.string.view_mode_folders),
+                MenuItemVisibilityDialog.Item("change_view_type", R.string.change_view_type),
+                MenuItemVisibilityDialog.Item("temporarily_show_hidden", com.simplemobiletools.commons.R.string.temporarily_show_hidden),
+                MenuItemVisibilityDialog.Item("temporarily_show_excluded", R.string.temporarily_show_excluded),
+                MenuItemVisibilityDialog.Item("set_as_default_folder", R.string.set_as_default_folder),
+                MenuItemVisibilityDialog.Item("create_new_folder", com.simplemobiletools.commons.R.string.create_new_folder),
+                MenuItemVisibilityDialog.Item("open_camera", R.string.open_camera),
+                MenuItemVisibilityDialog.Item("open_recycle_bin", R.string.open_the_recycle_bin),
+                MenuItemVisibilityDialog.Item("column_count", R.string.column_count),
+                MenuItemVisibilityDialog.Item("more_apps_from_us", R.string.more_apps_from_us),
+                MenuItemVisibilityDialog.Item("settings", com.simplemobiletools.commons.R.string.settings),
+                MenuItemVisibilityDialog.Item("about", com.simplemobiletools.commons.R.string.about)
+            )
+            MenuItemVisibilityDialog(this, items, config.getHiddenMainMenuItems()) {
+                config.setHiddenMainMenuItems(it)
+            }
+        }
+    }
+
+    private fun setupCustomizeFolderMenu() {
+        binding.settingsCustomizeFolderMenuHolder.setOnClickListener {
+            val items = listOf(
+                MenuItemVisibilityDialog.Item("cab_properties", com.simplemobiletools.commons.R.string.properties),
+                MenuItemVisibilityDialog.Item("cab_rename", com.simplemobiletools.commons.R.string.rename),
+                MenuItemVisibilityDialog.Item("cab_pin", R.string.pin_to_the_top),
+                MenuItemVisibilityDialog.Item("cab_unpin", R.string.unpin_folder),
+                MenuItemVisibilityDialog.Item("cab_change_order", R.string.reorder_by_dragging),
+                MenuItemVisibilityDialog.Item("cab_hide", com.simplemobiletools.commons.R.string.hide_folder),
+                MenuItemVisibilityDialog.Item("cab_exclude", R.string.exclude),
+                MenuItemVisibilityDialog.Item("cab_lock", R.string.lock_folder),
+                MenuItemVisibilityDialog.Item("cab_unlock", R.string.unlock_folder),
+                MenuItemVisibilityDialog.Item("cab_copy_to", com.simplemobiletools.commons.R.string.copy_to),
+                MenuItemVisibilityDialog.Item("cab_move_to", com.simplemobiletools.commons.R.string.move_to),
+                MenuItemVisibilityDialog.Item("cab_create_shortcut", R.string.create_shortcut),
+                MenuItemVisibilityDialog.Item("cab_select_all", com.simplemobiletools.commons.R.string.select_all),
+                MenuItemVisibilityDialog.Item("cab_delete", com.simplemobiletools.commons.R.string.delete)
+            )
+            MenuItemVisibilityDialog(this, items, config.getHiddenFolderMenuItems()) {
+                config.setHiddenFolderMenuItems(it)
+            }
+        }
+    }
+
+    private fun setupCustomizeImageMenu() {
+        binding.settingsCustomizeImageMenuHolder.setOnClickListener {
+            showMediaMenuCustomizationDialog(isVideo = false)
+        }
+    }
+
+    private fun setupCustomizeVideoMenu() {
+        binding.settingsCustomizeVideoMenuHolder.setOnClickListener {
+            showMediaMenuCustomizationDialog(isVideo = true)
+        }
+    }
+
+    private fun showMediaMenuCustomizationDialog(isVideo: Boolean) {
+        val items = listOf(
+            MenuItemVisibilityDialog.Item("sort", com.simplemobiletools.commons.R.string.sort_by),
+            MenuItemVisibilityDialog.Item("filter", R.string.filter_media),
+            MenuItemVisibilityDialog.Item("toggle_filename", R.string.toggle_filename),
+            MenuItemVisibilityDialog.Item("folder_view", R.string.folder_view),
+            MenuItemVisibilityDialog.Item("change_view_type", R.string.change_view_type),
+            MenuItemVisibilityDialog.Item("group", R.string.group_by),
+            MenuItemVisibilityDialog.Item("column_count", R.string.column_count),
+            MenuItemVisibilityDialog.Item("slideshow", R.string.slideshow),
+            MenuItemVisibilityDialog.Item("open_camera", R.string.open_camera),
+            MenuItemVisibilityDialog.Item("create_new_folder", com.simplemobiletools.commons.R.string.create_new_folder),
+            MenuItemVisibilityDialog.Item("open_recycle_bin", R.string.open_the_recycle_bin),
+            MenuItemVisibilityDialog.Item("temporarily_show_hidden", com.simplemobiletools.commons.R.string.temporarily_show_hidden),
+            MenuItemVisibilityDialog.Item("keep_screen_on", R.string.keep_screen_on),
+            MenuItemVisibilityDialog.Item("set_as_default_folder", R.string.set_as_default_folder),
+            MenuItemVisibilityDialog.Item("settings", com.simplemobiletools.commons.R.string.settings),
+            MenuItemVisibilityDialog.Item("about", com.simplemobiletools.commons.R.string.about)
+        )
+        val hiddenGetter = if (isVideo) config::getHiddenVideoMenuItems else config::getHiddenImageMenuItems
+        val hiddenSetter = if (isVideo) config::setHiddenVideoMenuItems else config::setHiddenImageMenuItems
+        MenuItemVisibilityDialog(this, items, hiddenGetter()) {
+            hiddenSetter(it)
         }
     }
 
@@ -911,6 +1012,11 @@ class SettingsActivity : SimpleActivity() {
                 put(PINNED_FOLDERS, TextUtils.join(",", config.pinnedFolders))
                 put(DISPLAY_FILE_NAMES, config.displayFileNames)
                 put(FILTER_MEDIA, config.filterMedia)
+                put(DISABLE_LOCK_HAPTIC_FEEDBACK, config.disableLockHapticFeedback)
+                put(HIDDEN_MAIN_MENU_ITEMS, config.getHiddenMainMenuItems().joinToString(","))
+                put(HIDDEN_FOLDER_MENU_ITEMS, config.getHiddenFolderMenuItems().joinToString(","))
+                put(HIDDEN_IMAGE_MENU_ITEMS, config.getHiddenImageMenuItems().joinToString(","))
+                put(HIDDEN_VIDEO_MENU_ITEMS, config.getHiddenVideoMenuItems().joinToString(","))
                 put(DIR_COLUMN_CNT, config.dirColumnCnt)
                 put(MEDIA_COLUMN_CNT, config.mediaColumnCnt)
                 put(SHOW_ALL, config.showAll)
@@ -1055,6 +1161,11 @@ class SettingsActivity : SimpleActivity() {
                 PINNED_FOLDERS -> config.addPinnedFolders(value.toStringSet())
                 DISPLAY_FILE_NAMES -> config.displayFileNames = value.toBoolean()
                 FILTER_MEDIA -> config.filterMedia = value.toInt()
+                DISABLE_LOCK_HAPTIC_FEEDBACK -> config.disableLockHapticFeedback = value.toBoolean()
+                HIDDEN_MAIN_MENU_ITEMS -> config.setHiddenMainMenuItems(value.toStringSet())
+                HIDDEN_FOLDER_MENU_ITEMS -> config.setHiddenFolderMenuItems(value.toStringSet())
+                HIDDEN_IMAGE_MENU_ITEMS -> config.setHiddenImageMenuItems(value.toStringSet())
+                HIDDEN_VIDEO_MENU_ITEMS -> config.setHiddenVideoMenuItems(value.toStringSet())
                 DIR_COLUMN_CNT -> config.dirColumnCnt = value.toInt()
                 MEDIA_COLUMN_CNT -> config.mediaColumnCnt = value.toInt()
                 SHOW_ALL -> config.showAll = value.toBoolean()

@@ -152,7 +152,8 @@ class PickDirectoryDialog(
     }
 
     private fun fetchDirectories(forceShowHiddenAndExcluded: Boolean) {
-        activity.getCachedDirectories(forceShowHidden = forceShowHiddenAndExcluded, forceShowExcluded = forceShowHiddenAndExcluded) {
+        // the eye toggle must not leak excluded folders into the picker, only hidden ones
+        activity.getCachedDirectories(forceShowHidden = forceShowHiddenAndExcluded, forceShowExcluded = false) {
             if (it.isNotEmpty()) {
                 it.forEach {
                     it.subfoldersMediaCount = it.mediaCnt

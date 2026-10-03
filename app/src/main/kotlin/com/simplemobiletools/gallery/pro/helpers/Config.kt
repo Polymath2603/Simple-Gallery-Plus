@@ -84,12 +84,30 @@ class Config(context: Context) : BaseConfig(context) {
         set(pinnedFolders) = prefs.edit().putStringSet(PINNED_FOLDERS, pinnedFolders).apply()
 
     var showAll: Boolean
-        get() = prefs.getBoolean(SHOW_ALL, false)
-        set(showAll) = prefs.edit().putBoolean(SHOW_ALL, showAll).apply()
+        get() = mainViewMode == VIEW_MODE_SHOW_ALL
+        set(showAll) {
+            if (showAll) {
+                mainViewMode = VIEW_MODE_SHOW_ALL
+            } else if (mainViewMode == VIEW_MODE_SHOW_ALL) {
+                mainViewMode = VIEW_MODE_FOLDERS
+            }
+            prefs.edit().putBoolean(SHOW_ALL, showAll).apply()
+        }
+
+    // 3-state mode of the main screen: plain folder list, folder-in-folder tree, or all media
+    var mainViewMode: Int
+        get() = prefs.getInt(MAIN_VIEW_MODE, if (prefs.getBoolean(SHOW_ALL, false)) VIEW_MODE_SHOW_ALL else VIEW_MODE_FOLDERS)
+        set(mainViewMode) = prefs.edit().putInt(MAIN_VIEW_MODE, mainViewMode).apply()
 
     var treeMode: Boolean
-        get() = prefs.getBoolean(TREE_MODE, false)
-        set(treeMode) = prefs.edit().putBoolean(TREE_MODE, treeMode).apply()
+        get() = mainViewMode == VIEW_MODE_TREE
+        set(treeMode) {
+            if (treeMode) {
+                mainViewMode = VIEW_MODE_TREE
+            } else if (mainViewMode == VIEW_MODE_TREE) {
+                mainViewMode = VIEW_MODE_FOLDERS
+            }
+        }
 
     fun addPinnedFolders(paths: Set<String>) {
         val currPinnedFolders = HashSet<String>(pinnedFolders)
@@ -570,4 +588,57 @@ class Config(context: Context) : BaseConfig(context) {
     var lastExportedFavoritesFolder: String
         get() = prefs.getString(LAST_EXPORTED_FAVORITES_FOLDER, "")!!
         set(lastExportedFavoritesFolder) = prefs.edit().putString(LAST_EXPORTED_FAVORITES_FOLDER, lastExportedFavoritesFolder).apply()
+
+    // eye-icon filter: show hidden folders but exclude Android restricted system folders
+    var temporarilyShowHiddenOnly: Boolean
+        get() = prefs.getBoolean("temporarily_show_hidden_only", false)
+        set(temporarilyShowHiddenOnly) = prefs.edit().putBoolean("temporarily_show_hidden_only", temporarilyShowHiddenOnly).apply()
+
+    // ---- folder encryption (files stored in place as "<name>.enc") ----
+
+    var encryptedFolders: MutableSet<String>
+        get() = prefs.getStringSet("encrypted_folders", HashSet())!!
+        set(encryptedFolders) = prefs.edit().remove("encrypted_folders").putStringSet("encrypted_folders", encryptedFolders).apply()
+
+    fun addEncryptedFolder(path: String) {
+        val currEncryptedFolders = HashSet<String>(encryptedFolders)
+        currEncryptedFolders.add(path)
+        encryptedFolders = currEncryptedFolders
+    }
+
+    fun removeEncryptedFolder(path: String) {
+        val currEncryptedFolders = HashSet<String>(encryptedFolders)
+        currEncryptedFolders.remove(path)
+        encryptedFolders = currEncryptedFolders
+    }
+
+    fun isFolderEncrypted(path: String) = encryptedFolders.contains(path)
+
+    // ---- menu customization: hidden menu items per menu, stored as comma-joined key sets ----
+
+    private fun getHiddenMenuItems(key: String): Set<String> {
+        val joined = prefs.getString(key, "") ?: ""
+        return if (joined.isEmpty()) HashSet() else joined.split(",").toSet()
+    }
+
+    private fun setHiddenMenuItems(key: String, value: Set<String>) {
+        prefs.edit().putString(key, value.joinToString(",")).apply()
+    }
+
+    fun getHiddenMainMenuItems() = getHiddenMenuItems(HIDDEN_MAIN_MENU_ITEMS)
+    fun setHiddenMainMenuItems(value: Set<String>) = setHiddenMenuItems(HIDDEN_MAIN_MENU_ITEMS, value)
+
+    fun getHiddenFolderMenuItems() = getHiddenMenuItems(HIDDEN_FOLDER_MENU_ITEMS)
+    fun setHiddenFolderMenuItems(value: Set<String>) = setHiddenMenuItems(HIDDEN_FOLDER_MENU_ITEMS, value)
+
+    fun getHiddenImageMenuItems() = getHiddenMenuItems(HIDDEN_IMAGE_MENU_ITEMS)
+    fun setHiddenImageMenuItems(value: Set<String>) = setHiddenMenuItems(HIDDEN_IMAGE_MENU_ITEMS, value)
+
+    fun getHiddenVideoMenuItems() = getHiddenMenuItems(HIDDEN_VIDEO_MENU_ITEMS)
+    fun setHiddenVideoMenuItems(value: Set<String>) = setHiddenMenuItems(HIDDEN_VIDEO_MENU_ITEMS, value)
+
+    // per-folder keep-screen-on toggle from the media menu; reverts when the media viewer closes
+    var temporarilyKeepScreenOn: Boolean
+        get() = prefs.getBoolean(TEMPORARILY_KEEP_SCREEN_ON, false)
+        set(temporarilyKeepScreenOn) = prefs.edit().putBoolean(TEMPORARILY_KEEP_SCREEN_ON, temporarilyKeepScreenOn).apply()
 }

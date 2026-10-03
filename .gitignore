@@ -10,3 +10,9 @@ keystore.properties
 
 # local build artifacts
 /build_outputs/
+
+# vendored Simple-Commons build outputs
+Simple-Commons/.gradle/
+Simple-Commons/commons/build/
+Simple-Commons/local.properties
+Simple-Commons/build/

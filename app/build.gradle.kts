@@ -104,7 +104,8 @@ dependencies {
         exclude(group = "com.booking", module = "rtlviewpager")
         exclude(group = "com.duolingo.open", module = "rtl-viewpager")
         exclude(group = "com.andrognito.patternlockview", module = "patternlockview")
-        exclude(group = "com.github.duolingo", module = "rtl-viewpager")
+        // NOTE: com.github.naveensingh:rtl-viewpager must NOT be excluded - commons' MyViewPager
+        // extends RtlViewPager, so it is needed at compile time. It resolves from jitpack.
     }
 
     implementation("com.github.naveensingh:androidphotofilters:193f2ae509")

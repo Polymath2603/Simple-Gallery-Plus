@@ -412,8 +412,10 @@ fun Context.rescanFolderMedia(path: String) {
 }
 
 fun Context.rescanFolderMediaSync(path: String) {
-    getCachedMedia(path) { cached ->
-        GetMediaAsynctask(applicationContext, path, isPickImage = false, isPickVideo = false, showAll = false) { newMedia ->
+    // DB maintenance: fetch without the main-list filter so items filtered out of the UI
+    // are still rescanned and don't get wiped from the DB
+    getCachedMedia(path, applyFilterMedia = false) { cached ->
+        GetMediaAsynctask(applicationContext, path, isPickImage = false, isPickVideo = false, showAll = false, applyFilterMedia = false) { newMedia ->
             ensureBackgroundThread {
                 val media = newMedia.filterIsInstance<Medium>() as ArrayList<Medium>
                 try {
@@ -665,7 +667,7 @@ fun Context.getCachedDirectories(
                 folderNoMediaStatuses[path] = hasNoMedia
             }
         } as ArrayList<Directory>
-        val filterMedia = config.filterMedia
+        val filterMedia = if (getVideosOnly || getImagesOnly) config.filterMedia else getAllTypesFilter()
 
         filteredDirectories = (when {
             getVideosOnly -> filteredDirectories.filter { it.types and TYPE_VIDEOS != 0 }
@@ -707,10 +709,10 @@ fun Context.getCachedDirectories(
     }
 }
 
-fun Context.getCachedMedia(path: String, getVideosOnly: Boolean = false, getImagesOnly: Boolean = false, callback: (ArrayList<ThumbnailItem>) -> Unit) {
+fun Context.getCachedMedia(path: String, getVideosOnly: Boolean = false, getImagesOnly: Boolean = false, applyFilterMedia: Boolean = true, callback: (ArrayList<ThumbnailItem>) -> Unit) {
     ensureBackgroundThread {
         val mediaFetcher = MediaFetcher(this)
-        val foldersToScan = if (path.isEmpty()) mediaFetcher.getFoldersToScan() else arrayListOf(path)
+        val foldersToScan = if (path.isEmpty()) mediaFetcher.getFoldersToScan(applyFilterMedia) else arrayListOf(path)
         var media = ArrayList<Medium>()
         if (path == FAVORITES) {
             media.addAll(mediaDB.getFavorites())
@@ -744,7 +746,7 @@ fun Context.getCachedMedia(path: String, getVideosOnly: Boolean = false, getImag
             media = media.filter { !it.path.contains("/.") } as ArrayList<Medium>
         }
 
-        val filterMedia = config.filterMedia
+        val filterMedia = if (applyFilterMedia) config.filterMedia else getAllTypesFilter()
         media = (when {
             getVideosOnly -> media.filter { it.type == TYPE_VIDEOS }
             getImagesOnly -> media.filter { it.type == TYPE_IMAGES }
@@ -1068,7 +1070,7 @@ fun Context.updateDirectoryPath(path: String) {
     val favoritePaths = getFavoritePaths()
     val curMedia = mediaFetcher.getFilesFrom(
         path, getImagesOnly, getVideosOnly, getProperDateTaken, getProperLastModified, getProperFileSize,
-        favoritePaths, false, lastModifieds, dateTakens, null
+        favoritePaths, false, lastModifieds, dateTakens, null, false
     )
     val directory = createDirectoryFromMedia(path, curMedia, albumCovers, hiddenString, includedFolders, getProperFileSize, noMediaFolders)
     updateDBDirectory(directory)

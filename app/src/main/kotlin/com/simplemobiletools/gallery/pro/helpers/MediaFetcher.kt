@@ -26,12 +26,15 @@ class MediaFetcher(val context: Context) {
     var shouldStop = false
 
     // on Android 11 we fetch all files at once from MediaStore and have it split by folder, use it if available
+    // applyFilterMedia: false = ignore the user's main-list filter (filterMedia) and fetch every supported type;
+    // used by the viewer, pickers and DB rescans so hidden-by-filter types stay usable there
     fun getFilesFrom(
         curPath: String, isPickImage: Boolean, isPickVideo: Boolean, getProperDateTaken: Boolean, getProperLastModified: Boolean,
         getProperFileSize: Boolean, favoritePaths: ArrayList<String>, getVideoDurations: Boolean,
-        lastModifieds: HashMap<String, Long>, dateTakens: HashMap<String, Long>, android11Files: HashMap<String, ArrayList<Medium>>?
+        lastModifieds: HashMap<String, Long>, dateTakens: HashMap<String, Long>, android11Files: HashMap<String, ArrayList<Medium>>?,
+        applyFilterMedia: Boolean = true
     ): ArrayList<Medium> {
-        val filterMedia = context.config.filterMedia
+        val filterMedia = if (applyFilterMedia) context.config.filterMedia else getAllTypesFilter()
         if (filterMedia == 0) {
             return ArrayList()
         }
@@ -47,7 +50,7 @@ class MediaFetcher(val context: Context) {
                 if (android11Files?.containsKey(curPath.toLowerCase()) == true) {
                     curMedia.addAll(android11Files[curPath.toLowerCase()]!!)
                 } else if (android11Files == null) {
-                    val files = getAndroid11FolderMedia(isPickImage, isPickVideo, favoritePaths, false, getProperDateTaken, dateTakens)
+                    val files = getAndroid11FolderMedia(isPickImage, isPickVideo, favoritePaths, false, getProperDateTaken, dateTakens, applyFilterMedia)
                     if (files.containsKey(curPath.toLowerCase())) {
                         curMedia.addAll(files[curPath.toLowerCase()]!!)
                     }
@@ -62,7 +65,7 @@ class MediaFetcher(val context: Context) {
 
                 if (curPath == FAVORITES && isRPlus() && !isExternalStorageManager()) {
                     val files =
-                        getAndroid11FolderMedia(isPickImage, isPickVideo, favoritePaths, true, getProperDateTaken, dateTakens.clone() as HashMap<String, Long>)
+                        getAndroid11FolderMedia(isPickImage, isPickVideo, favoritePaths, true, getProperDateTaken, dateTakens.clone() as HashMap<String, Long>, applyFilterMedia)
                     newMedia.forEach { newMedium ->
                         for ((folder, media) in files) {
                             media.forEach { medium ->
@@ -81,7 +84,7 @@ class MediaFetcher(val context: Context) {
         return curMedia
     }
 
-    fun getFoldersToScan(): ArrayList<String> {
+    fun getFoldersToScan(applyFilterMedia: Boolean = true): ArrayList<String> {
         return try {
             val OTGPath = context.config.OTGPath
             val folders = getLatestFileFolders()
@@ -91,7 +94,7 @@ class MediaFetcher(val context: Context) {
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).toString()
             ).filter { context.getDoesFilePathExist(it, OTGPath) })
 
-            val filterMedia = context.config.filterMedia
+            val filterMedia = if (applyFilterMedia) context.config.filterMedia else getAllTypesFilter()
             val uri = Files.getContentUri("external")
             val projection = arrayOf(Images.Media.DATA)
             val selection = getSelectionQuery(filterMedia)
@@ -431,14 +434,15 @@ class MediaFetcher(val context: Context) {
         favoritePaths: ArrayList<String>,
         getFavoritePathsOnly: Boolean,
         getProperDateTaken: Boolean,
-        dateTakens: HashMap<String, Long>
+        dateTakens: HashMap<String, Long>,
+        applyFilterMedia: Boolean = true
     ): HashMap<String, ArrayList<Medium>> {
         val media = HashMap<String, ArrayList<Medium>>()
         if (!isRPlus() || Environment.isExternalStorageManager()) {
             return media
         }
 
-        val filterMedia = context.config.filterMedia
+        val filterMedia = if (applyFilterMedia) context.config.filterMedia else getAllTypesFilter()
         val showHidden = context.config.shouldShowHidden
 
         val projection = arrayOf(
@@ -472,8 +476,9 @@ class MediaFetcher(val context: Context) {
                 val isGif = if (isImage || isVideo) false else path.isGif()
                 val isRaw = if (isImage || isVideo || isGif) false else path.isRawFast()
                 val isSvg = if (isImage || isVideo || isGif || isRaw) false else path.isSvg()
+                val isEncrypted = if (isImage || isVideo || isGif || isRaw || isSvg) false else path.endsWith(".enc")
 
-                if (!isImage && !isVideo && !isGif && !isRaw && !isSvg) {
+                if (!isImage && !isVideo && !isGif && !isRaw && !isSvg && !isEncrypted) {
                     return@queryCursor
                 }
 
@@ -506,6 +511,8 @@ class MediaFetcher(val context: Context) {
                     isRaw -> TYPE_RAWS
                     isSvg -> TYPE_SVGS
                     isPortrait -> TYPE_PORTRAITS
+                    // encrypted files surface as image placeholders so folders don't look empty
+                    isEncrypted -> TYPE_IMAGES
                     else -> TYPE_IMAGES
                 }
 

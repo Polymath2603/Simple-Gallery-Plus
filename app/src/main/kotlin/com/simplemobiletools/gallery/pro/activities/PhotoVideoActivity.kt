@@ -341,14 +341,9 @@ open class PhotoVideoActivity : SimpleActivity(), ViewPagerFragment.FragmentList
         PropertiesDialog(this, mUri!!.path!!)
     }
 
+    // this is the viewer, not the main browsing list: the filterMedia setting must not block files here
     private fun isFileTypeVisible(path: String): Boolean {
-        val filter = config.filterMedia
-        return !(path.isImageFast() && filter and TYPE_IMAGES == 0 ||
-            path.isVideoFast() && filter and TYPE_VIDEOS == 0 ||
-            path.isGif() && filter and TYPE_GIFS == 0 ||
-            path.isRawFast() && filter and TYPE_RAWS == 0 ||
-            path.isSvg() && filter and TYPE_SVGS == 0 ||
-            path.isPortrait() && filter and TYPE_PORTRAITS == 0)
+        return true
     }
 
     private fun initBottomActions() {

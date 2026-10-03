@@ -757,8 +757,94 @@
 
             </RelativeLayout>
 
+            <RelativeLayout
+                android:id="@+id/settings_disable_lock_haptic_feedback_holder"
+                style="@style/SettingsHolderCheckboxStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <com.simplemobiletools.commons.views.MyAppCompatCheckbox
+                    android:id="@+id/settings_disable_lock_haptic_feedback"
+                    style="@style/SettingsCheckboxStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/disable_lock_haptic_feedback" />
+
+            </RelativeLayout>
+
             <include
                 android:id="@+id/settings_security_divider"
+                layout="@layout/divider" />
+
+            <TextView
+                android:id="@+id/settings_menu_customization_label"
+                style="@style/SettingsSectionLabelStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/menu_customization" />
+
+            <RelativeLayout
+                android:id="@+id/settings_customize_main_menu_holder"
+                style="@style/SettingsHolderTextViewOneLinerStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <com.simplemobiletools.commons.views.MyTextView
+                    android:id="@+id/settings_customize_main_menu"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/customize_main_menu" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_customize_folder_menu_holder"
+                style="@style/SettingsHolderTextViewOneLinerStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <com.simplemobiletools.commons.views.MyTextView
+                    android:id="@+id/settings_customize_folder_menu"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/customize_folder_menu" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_customize_image_menu_holder"
+                style="@style/SettingsHolderTextViewOneLinerStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <com.simplemobiletools.commons.views.MyTextView
+                    android:id="@+id/settings_customize_image_menu"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/customize_media_menu_image" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_customize_video_menu_holder"
+                style="@style/SettingsHolderTextViewOneLinerStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <com.simplemobiletools.commons.views.MyTextView
+                    android:id="@+id/settings_customize_video_menu"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/customize_media_menu_video" />
+
+            </RelativeLayout>
+
+            <include
+                android:id="@+id/settings_menu_customization_divider"
                 layout="@layout/divider" />
 
             <TextView

@@ -17,6 +17,7 @@ import com.simplemobiletools.commons.dialogs.ConfirmationDialog
 import com.simplemobiletools.commons.dialogs.CreateNewFolderDialog
 import com.simplemobiletools.commons.dialogs.FilePickerDialog
 import com.simplemobiletools.commons.dialogs.RadioGroupDialog
+import com.simplemobiletools.commons.dialogs.SecurityDialog
 import com.simplemobiletools.commons.extensions.*
 import com.simplemobiletools.commons.helpers.*
 import com.simplemobiletools.commons.models.FileDirItem
@@ -27,7 +28,6 @@ import com.simplemobiletools.commons.views.MyRecyclerView
 import com.simplemobiletools.gallery.pro.BuildConfig
 import com.simplemobiletools.gallery.pro.R
 import com.simplemobiletools.gallery.pro.adapters.DirectoryAdapter
-import com.simplemobiletools.gallery.pro.adapters.TreeAdapter
 import com.simplemobiletools.gallery.pro.databases.GalleryDatabase
 import com.simplemobiletools.gallery.pro.databinding.ActivityMainBinding
 import com.simplemobiletools.gallery.pro.dialogs.ChangeSortingDialog
@@ -77,7 +77,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     private var mLastMediaFetcher: MediaFetcher? = null
     private var mDirs = ArrayList<Directory>()
     private var mDirsIgnoringSearch = ArrayList<Directory>()
-    private var mExpandedTreePaths = setOf<String>()
 
     private var mStoredAnimateGifs = true
     private var mStoredCropThumbnails = true
@@ -293,10 +292,12 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         if (!isChangingConfigurations) {
             config.temporarilyShowHidden = false
             config.temporarilyShowExcluded = false
+            config.temporarilyShowHiddenOnly = false
             config.tempSkipDeleteConfirmation = false
             config.tempSkipRecycleBin = false
             mTempShowHiddenHandler.removeCallbacksAndMessages(null)
             removeTempFolder()
+            java.io.File(cacheDir, "temp_decrypted").deleteRecursively()
             unregisterFileUpdateListener()
 
             if (!config.showAll) {
@@ -360,6 +361,26 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 findItem(R.id.set_as_default_folder).isVisible = !config.defaultFolder.isEmpty()
                 findItem(R.id.open_recycle_bin).isVisible = config.useRecycleBin && !config.showRecycleBinAtFolders
                 findItem(R.id.more_apps_from_us).isVisible = !resources.getBoolean(com.simplemobiletools.commons.R.bool.hide_google_relations)
+
+                // the mode button always shows the CURRENT mode: folders / tree / all media
+                findItem(R.id.show_all).apply {
+                    when (config.mainViewMode) {
+                        VIEW_MODE_FOLDERS -> {
+                            title = getString(R.string.view_mode_folders)
+                            icon = resources.getDrawable(R.drawable.ic_folder_vector)
+                        }
+                        VIEW_MODE_TREE -> {
+                            title = getString(R.string.view_mode_tree)
+                            icon = resources.getDrawable(R.drawable.ic_tree_vector)
+                        }
+                        else -> {
+                            title = getString(R.string.view_mode_all_media)
+                            icon = resources.getDrawable(R.drawable.ic_photo_vector)
+                        }
+                    }
+                }
+
+                applyHiddenEntryNames(this@MainActivity, config.getHiddenMainMenuItems())
             }
         }
 
@@ -400,8 +421,35 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 R.id.sort -> showSortingDialog()
                 R.id.filter -> showFilterMediaDialog()
                 R.id.open_camera -> launchCamera()
-                R.id.show_all -> showAllMedia()
-                R.id.tree_mode -> toggleTreeMode()
+                R.id.show_all -> {
+                    // mode switching happens in place: no activity restart, so the app lock
+                    // is only ever asked once at launch, never on a mode change
+                    when (config.mainViewMode) {
+                        VIEW_MODE_FOLDERS -> {
+                            // switch to tree view (root folders only, subfolders show inside the media view)
+                            config.mainViewMode = VIEW_MODE_TREE
+                            config.showAll = false
+                            binding.directoriesGrid.adapter = null
+                            binding.directoriesRefreshLayout.isRefreshing = true
+                            getDirectories()
+                        }
+                        VIEW_MODE_TREE -> {
+                            // switch to all-media view
+                            config.mainViewMode = VIEW_MODE_SHOW_ALL
+                            config.showAll = true
+                            showAllMedia()
+                        }
+                        else -> {
+                            // back to plain folder list
+                            config.mainViewMode = VIEW_MODE_FOLDERS
+                            config.showAll = false
+                            binding.directoriesGrid.adapter = null
+                            binding.directoriesRefreshLayout.isRefreshing = true
+                            getDirectories()
+                        }
+                    }
+                    refreshMenuItems()
+                }
                 R.id.change_view_type -> changeViewType()
                 R.id.temporarily_show_hidden -> tryToggleTemporarilyShowHidden()
                 R.id.stop_showing_hidden -> tryToggleTemporarilyShowHidden()
@@ -436,6 +484,19 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     }
 
     private fun getRecyclerAdapter() = binding.directoriesGrid.adapter as? DirectoryAdapter
+
+    // folder tap in both folder and tree mode: opens the folder in the media view (which
+    // lists the folder's own media plus its child folders on top when in tree mode)
+    private fun handleFolderClick(clickedDir: Directory) {
+        val path = clickedDir.path
+        if (path != config.tempFolderPath) {
+            itemClicked(path)
+        } else if (config.groupDirectSubfolders) {
+            mCurrentPathPrefix = path
+            mOpenedSubfolders.add(path)
+            setupAdapter(mDirs, "")
+        }
+    }
 
     private fun storeStateVariables() {
         mStoredTextColor = getProperTextColor()
@@ -549,12 +610,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         mShouldStopFetching = true
         mIsGettingDirs = true
 
-        if (config.treeMode) {
-            mIsGettingDirs = false
-            showTreeView()
-            return
-        }
-
         val getImagesOnly = mIsPickImageIntent || mIsGetImageContentIntent
         val getVideosOnly = mIsPickVideoIntent || mIsGetVideoContentIntent
 
@@ -613,130 +668,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         }
     }
 
-    private fun toggleTreeMode() {
-        config.treeMode = !config.treeMode
-        if (config.treeMode) {
-            config.showAll = false
-            showTreeView()
-        } else {
-            getDirectories()
-        }
-    }
-
-    private fun showTreeView() {
-        ensureBackgroundThread {
-            val includedPaths = config.includedFolders
-            val showHidden = config.shouldShowHidden
-            val allDirs = try {
-                directoryDB.getAll() as ArrayList<Directory>
-            } catch (e: Exception) {
-                ArrayList()
-            }
-
-            val roots = if (includedPaths.isNotEmpty()) {
-                includedPaths.filter { path ->
-                    allDirs.any { it.path == path } || allDirs.any { it.path.startsWith("$path/") }
-                }.map { path ->
-                    allDirs.firstOrNull { it.path == path } ?: Directory(null, path, "", path.getFilenameFromPath(), 0, 0L, 0L, 0L, 0, 0, "")
-                }
-            } else {
-                val topPaths = allDirs.map { it.path }.distinct().map { it.substringBeforeLast("/") }.distinct()
-                topPaths.map { path ->
-                    allDirs.firstOrNull { it.path == path } ?: Directory(null, path, "", path.getFilenameFromPath(), 0, 0L, 0L, 0L, 0, 0, "")
-                }
-            }
-
-            val treeItems = buildTree(roots, allDirs, showHidden)
-            runOnUiThread {
-                setupTreeAdapter(treeItems)
-            }
-        }
-    }
-
-    private fun buildTree(
-        roots: List<Directory>,
-        allDirs: ArrayList<Directory>,
-        showHidden: Boolean,
-        expandedPaths: Set<String> = mExpandedTreePaths
-    ): ArrayList<com.simplemobiletools.gallery.pro.adapters.TreeAdapter.TreeItem> {
-        val result = ArrayList<com.simplemobiletools.gallery.pro.adapters.TreeAdapter.TreeItem>()
-        val allPaths = allDirs.map { it.path }.toSet()
-
-        fun getChildren(parentPath: String): List<Directory> {
-            return allDirs.filter {
-                it.path.startsWith("$parentPath/") &&
-                    !it.path.substringAfter("$parentPath/").contains('/') &&
-                    (showHidden || !it.path.getFilenameFromPath().startsWith("."))
-            }.sortedBy { it.name.lowercase() }
-        }
-
-        fun walkNode(dir: Directory, depth: Int) {
-            val hasMedia = allPaths.contains(dir.path)
-            val meaningfulChildren = getChildren(dir.path).filter { child ->
-                allDirs.any { it.path == child.path || it.path.startsWith("${child.path}/") }
-            }
-            val isExpanded = expandedPaths.contains(dir.path)
-            val childCount = meaningfulChildren.size
-
-            // case 3: no media, no children → skip
-            if (!hasMedia && childCount == 0) return
-
-            // case 4: no media, only meaningful children → skip, promote children up
-            if (!hasMedia && childCount > 0) {
-                meaningfulChildren.forEach { child -> walkNode(child, depth) }
-                return
-            }
-
-            // case 1 (has media, no children) or case 2 (has media + children)
-            result.add(com.simplemobiletools.gallery.pro.adapters.TreeAdapter.TreeItem(
-                directory = dir,
-                depth = depth,
-                isExpanded = isExpanded,
-                hasMedia = hasMedia,
-                childCount = childCount
-            ))
-
-            if (isExpanded) {
-                meaningfulChildren.forEach { child -> walkNode(child, depth + 1) }
-            }
-        }
-
-        val sortedRoots = roots.sortedBy { it.name.lowercase() }
-        sortedRoots.forEach { root ->
-            walkNode(root, 0)
-        }
-
-        return result
-    }
-
-    private fun setupTreeAdapter(items: ArrayList<com.simplemobiletools.gallery.pro.adapters.TreeAdapter.TreeItem>) {
-        if (binding.directoriesGrid.adapter is com.simplemobiletools.gallery.pro.adapters.TreeAdapter) {
-            (binding.directoriesGrid.adapter as com.simplemobiletools.gallery.pro.adapters.TreeAdapter).updateItems(items)
-        } else {
-            binding.directoriesGrid.adapter = null
-            val treeAdapter = com.simplemobiletools.gallery.pro.adapters.TreeAdapter(
-                this,
-                items,
-                binding.directoriesGrid,
-                onFolderClick = { path ->
-                    itemClicked(path)
-                },
-                onExpandToggle = { position ->
-                    val item = (binding.directoriesGrid.adapter as com.simplemobiletools.gallery.pro.adapters.TreeAdapter).treeItems.getOrNull(position)
-                    if (item != null) {
-                        if (item.isExpanded) {
-                            mExpandedTreePaths = mExpandedTreePaths - item.directory.path
-                        } else {
-                            mExpandedTreePaths = mExpandedTreePaths + item.directory.path
-                        }
-                        showTreeView()
-                    }
-                }
-            )
-            binding.directoriesGrid.adapter = treeAdapter
-        }
-    }
-
     private fun changeViewType() {
         ChangeViewTypeDialog(this, true) {
             refreshMenuItems()
@@ -763,6 +694,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     private fun toggleTemporarilyShowHidden(show: Boolean) {
         mLoadedInitialPhotos = false
         config.temporarilyShowHidden = show
+        config.temporarilyShowHiddenOnly = show
         binding.directoriesGrid.adapter = null
         getDirectories()
         refreshMenuItems()
@@ -1033,12 +965,44 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     }
 
     private fun itemClicked(path: String) {
-        handleLockedFolderOpening(path) { success ->
-            if (success) {
-                Intent(this, MediaActivity::class.java).apply {
-                    putExtra(SKIP_AUTHENTICATION, true)
-                    putExtra(DIRECTORY, path)
-                    handleMediaIntent(this)
+        if (config.isFolderEncrypted(path)) {
+            // encrypted folders decrypt on open: the secret is the folder's lock pattern/pin hash
+            SecurityDialog(this, config.getFolderProtectionHash(path), config.getFolderProtectionType(path)) { hash, _, success ->
+                if (!success || hash.isNullOrEmpty()) {
+                    return@SecurityDialog
+                }
+
+                toast(R.string.decrypting)
+                ensureBackgroundThread {
+                    val tempCacheFolder = java.io.File(cacheDir, "temp_decrypted/${java.io.File(path).name}")
+                    tempCacheFolder.deleteRecursively()
+                    tempCacheFolder.mkdirs()
+
+                    val files = java.io.File(path).listFiles()
+                    files?.forEach { file ->
+                        if (file.isFile && file.name.endsWith(".enc")) {
+                            val decryptedFile = java.io.File(tempCacheFolder, file.name.removeSuffix(".enc"))
+                            EncryptionHelper.decryptFile(this@MainActivity, file, decryptedFile, hash)
+                        }
+                    }
+
+                    runOnUiThread {
+                        Intent(this@MainActivity, MediaActivity::class.java).apply {
+                            putExtra(SKIP_AUTHENTICATION, true)
+                            putExtra(DIRECTORY, tempCacheFolder.absolutePath)
+                            handleMediaIntent(this)
+                        }
+                    }
+                }
+            }
+        } else {
+            handleLockedFolderOpening(path) { success ->
+                if (success) {
+                    Intent(this, MediaActivity::class.java).apply {
+                        putExtra(SKIP_AUTHENTICATION, true)
+                        putExtra(DIRECTORY, path)
+                        handleMediaIntent(this)
+                    }
                 }
             }
         }
@@ -1388,10 +1352,29 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     private fun setupAdapter(dirs: ArrayList<Directory>, textToSearch: String = binding.mainMenu.getCurrentQuery(), forceRecreate: Boolean = false) {
         val currAdapter = binding.directoriesGrid.adapter
+
         val sourceDirs = dirs
         val distinctDirs = sourceDirs.distinctBy { it.path.getDistinctPath() }.toMutableList() as ArrayList<Directory>
         val sortedDirs = getSortedDirectories(distinctDirs)
         var dirsToShow = getDirsToShow(sortedDirs, mDirs, mCurrentPathPrefix).clone() as ArrayList<Directory>
+
+        // eye-icon filter: when temporarily showing hidden items, still keep Android restricted
+        // system folders (e.g. /Android/data subfolders) out of the list
+        if (config.temporarilyShowHiddenOnly) {
+            dirsToShow = dirsToShow.filter { !isRestrictedWithSAFSdk30(it.path) }.toMutableList() as ArrayList<Directory>
+        }
+
+        // tree mode uses the exact same list UI and click handling as folders mode, it only
+        // limits the list to root-level folders (no descendants of other listed folders).
+        // Subfolders appear inside the media view when a folder is opened.
+        if (config.treeMode && mCurrentPathPrefix.isEmpty()) {
+            dirsToShow = dirsToShow.filter { dir ->
+                val path = dir.path
+                path == FAVORITES || path == RECYCLE_BIN || dirsToShow.none { other ->
+                    other.path != path && path.startsWith("${other.path}/")
+                }
+            }.toMutableList() as ArrayList<Directory>
+        }
 
         if (currAdapter == null || forceRecreate) {
             mDirsIgnoringSearch = dirs
@@ -1403,18 +1386,8 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 binding.directoriesGrid,
                 isPickIntent(intent) || isGetAnyContentIntent(intent),
                 binding.directoriesRefreshLayout
-            ) {
-                val clickedDir = it as Directory
-                val path = clickedDir.path
-                if (clickedDir.subfoldersCount == 1 || !config.groupDirectSubfolders) {
-                    if (path != config.tempFolderPath) {
-                        itemClicked(path)
-                    }
-                } else {
-                    mCurrentPathPrefix = path
-                    mOpenedSubfolders.add(path)
-                    setupAdapter(mDirs, "")
-                }
+            ) { clickedAny ->
+                handleFolderClick(clickedAny as Directory)
             }.apply {
                 setupZoomListener(mZoomListener)
                 runOnUiThread {

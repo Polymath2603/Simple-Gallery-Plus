@@ -36,7 +36,16 @@ const val MEDIA_LANDSCAPE_COLUMN_CNT = "media_landscape_column_cnt"
 const val MEDIA_HORIZONTAL_COLUMN_CNT = "media_horizontal_column_cnt"
 const val MEDIA_LANDSCAPE_HORIZONTAL_COLUMN_CNT = "media_landscape_horizontal_column_cnt"
 const val SHOW_ALL = "show_all"                           // display images and videos from all folders together
-const val TREE_MODE = "tree_mode"                         // folder-in-folder tree view
+const val MAIN_VIEW_MODE = "main_view_mode"               // folders view / tree view / show all, stored as int
+// values of MAIN_VIEW_MODE
+const val VIEW_MODE_FOLDERS = 0
+const val VIEW_MODE_TREE = 1
+const val VIEW_MODE_SHOW_ALL = 2
+const val HIDDEN_MAIN_MENU_ITEMS = "hidden_main_menu_items"
+const val HIDDEN_FOLDER_MENU_ITEMS = "hidden_folder_menu_items"
+const val HIDDEN_IMAGE_MENU_ITEMS = "hidden_image_menu_items"
+const val HIDDEN_VIDEO_MENU_ITEMS = "hidden_video_menu_items"
+const val TEMPORARILY_KEEP_SCREEN_ON = "temporarily_keep_screen_on"
 const val HIDE_FOLDER_TOOLTIP_SHOWN = "hide_folder_tooltip_shown"
 const val EXCLUDED_FOLDERS = "excluded_folders"
 const val INCLUDED_FOLDERS = "included_folders"
@@ -184,6 +193,10 @@ const val TYPE_SVGS = 16
 const val TYPE_PORTRAITS = 32
 
 fun getDefaultFileFilter() = TYPE_IMAGES or TYPE_VIDEOS or TYPE_GIFS or TYPE_RAWS or TYPE_SVGS
+
+// every supported media type: used when fetching media outside the main browsing list (viewer, pickers),
+// where the user's filterMedia setting (main-list filter) must not apply
+fun getAllTypesFilter() = getDefaultFileFilter() or TYPE_PORTRAITS
 
 const val LOCATION_INTERNAL = 1
 const val LOCATION_SD = 2

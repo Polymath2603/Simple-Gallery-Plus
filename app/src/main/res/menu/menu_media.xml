@@ -84,6 +84,21 @@
         android:title="@string/create_new_folder"
         app:showAsAction="never" />
     <item
+        android:id="@+id/keep_screen_on"
+        android:showAsAction="never"
+        android:title="@string/keep_screen_on"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/stop_keeping_screen_on"
+        android:showAsAction="never"
+        android:title="@string/stop_keeping_screen_on"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/customize_menu"
+        android:showAsAction="never"
+        android:title="@string/menu_customization"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/column_count"
         android:icon="@drawable/ic_column_count_vector"
         android:title="@string/column_count"

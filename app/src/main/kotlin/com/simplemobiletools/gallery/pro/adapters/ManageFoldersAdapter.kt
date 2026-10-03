@@ -1,9 +1,7 @@
 package com.simplemobiletools.gallery.pro.adapters
 
 import android.view.*
-import android.widget.EditText
 import android.widget.PopupMenu
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.view.ContextThemeWrapper
 import com.simplemobiletools.commons.activities.BaseSimpleActivity
 import com.simplemobiletools.commons.adapters.MyRecyclerViewAdapter
@@ -14,6 +12,7 @@ import com.simplemobiletools.commons.interfaces.RefreshRecyclerViewListener
 import com.simplemobiletools.commons.views.MyRecyclerView
 import com.simplemobiletools.gallery.pro.R
 import com.simplemobiletools.gallery.pro.databinding.ItemManageFolderBinding
+import com.simplemobiletools.gallery.pro.dialogs.EditFolderDialog
 import com.simplemobiletools.gallery.pro.extensions.config
 
 class ManageFoldersAdapter(
@@ -122,37 +121,18 @@ class ManageFoldersAdapter(
         if (selectedPaths.size != 1) return
         val oldPath = selectedPaths.firstOrNull() ?: return
 
-        val editText = EditText(activity).apply {
-            setText(oldPath)
-            setSelectAllOnFocus(true)
-            setPadding(64, 32, 64, 16)
-        }
+        EditFolderDialog(activity, oldPath) { newPath ->
+            val index = folders.indexOf(oldPath)
+            if (index >= 0) folders[index] = newPath
 
-        AlertDialog.Builder(activity, activity.getPopupMenuTheme()).apply {
-            setTitle(R.string.edit_folder)
-            setView(editText)
-            setPositiveButton(com.simplemobiletools.commons.R.string.ok, null)
-            setNegativeButton(com.simplemobiletools.commons.R.string.cancel, null)
-            create().apply {
-                show()
-                getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                    val newPath = editText.text.toString().trim()
-                    if (newPath.isNotEmpty() && newPath != oldPath) {
-                        val index = folders.indexOf(oldPath)
-                        if (index >= 0) folders[index] = newPath
-
-                        if (isShowingExcludedFolders) {
-                            config.removeExcludedFolder(oldPath)
-                            config.addExcludedFolder(newPath)
-                        } else {
-                            config.removeIncludedFolder(oldPath)
-                            config.addIncludedFolder(newPath)
-                        }
-                        listener?.refreshItems()
-                    }
-                    dismiss()
-                }
+            if (isShowingExcludedFolders) {
+                config.removeExcludedFolder(oldPath)
+                config.addExcludedFolder(newPath)
+            } else {
+                config.removeIncludedFolder(oldPath)
+                config.addIncludedFolder(newPath)
             }
+            listener?.refreshItems()
         }
     }
 

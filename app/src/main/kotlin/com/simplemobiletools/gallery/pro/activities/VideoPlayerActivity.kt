@@ -251,7 +251,7 @@ open class VideoPlayerActivity : SimpleActivity(), SeekBar.OnSeekBarChangeListen
 
         mExoPlayer = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(applicationContext))
-            .setSeekParameters(SeekParameters.CLOSEST_SYNC)
+            .setSeekParameters(SeekParameters.DEFAULT) // exact-frame seek, no keyframe snapping
             .build()
             .apply {
                 setMediaSource(mediaSource)
@@ -275,7 +275,7 @@ open class VideoPlayerActivity : SimpleActivity(), SeekBar.OnSeekBarChangeListen
 
         mExoPlayer = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(applicationContext))
-            .setSeekParameters(SeekParameters.CLOSEST_SYNC)
+            .setSeekParameters(SeekParameters.DEFAULT) // exact-frame seek, no keyframe snapping
             .build()
             .apply {
                 setMediaSource(mediaSource)
