@@ -16,29 +16,33 @@ import com.bumptech.glide.signature.ObjectKey
 import com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller
 import com.simplemobiletools.commons.activities.BaseSimpleActivity
 import com.simplemobiletools.commons.adapters.MyRecyclerViewAdapter
+import com.simplemobiletools.commons.dialogs.ConfirmationDialog
 import com.simplemobiletools.commons.dialogs.PropertiesDialog
 import com.simplemobiletools.commons.dialogs.RenameDialog
 import com.simplemobiletools.commons.dialogs.RenameItemDialog
+import com.simplemobiletools.commons.dialogs.RenameItemsDialog
 import com.simplemobiletools.commons.extensions.*
 import com.simplemobiletools.commons.helpers.*
 import com.simplemobiletools.commons.models.FileDirItem
 import com.simplemobiletools.commons.views.MyRecyclerView
 import com.simplemobiletools.gallery.pro.R
 import com.simplemobiletools.gallery.pro.activities.ViewPagerActivity
+import com.simplemobiletools.gallery.pro.activities.MediaActivity
 import com.simplemobiletools.gallery.pro.databinding.*
 import com.simplemobiletools.gallery.pro.dialogs.DeleteWithRememberDialog
 import com.simplemobiletools.gallery.pro.extensions.*
 import com.simplemobiletools.gallery.pro.helpers.*
 import com.simplemobiletools.gallery.pro.interfaces.MediaOperationsListener
+import com.simplemobiletools.gallery.pro.models.Directory
 import com.simplemobiletools.gallery.pro.models.Medium
 import com.simplemobiletools.gallery.pro.models.SubfolderItem
 import com.simplemobiletools.gallery.pro.models.ThumbnailItem
 import com.simplemobiletools.gallery.pro.models.ThumbnailSection
+import java.io.File
 
 class MediaAdapter(
     activity: BaseSimpleActivity, var media: ArrayList<ThumbnailItem>, val listener: MediaOperationsListener?, val isAGetIntent: Boolean,
     val allowMultiplePicks: Boolean, val path: String, recyclerView: MyRecyclerView,
-    private val subfolderClick: (String) -> Unit = {},
     itemClick: (Any) -> Unit
 ) :
     MyRecyclerViewAdapter(activity, recyclerView, itemClick), RecyclerViewFastScroller.OnPopupTextUpdate {
@@ -66,6 +70,13 @@ class MediaAdapter(
     private var displayFilenames = config.displayFileNames
     private var showFileTypes = config.showThumbnailFileTypes
 
+    // tree-mode subfolder tiles are rendered with the exact same folder tile state as on the main screen
+    private var pinnedFolders = config.pinnedFolders
+    private var folderStyle = config.folderStyle
+    private var groupDirectSubfolders = config.groupDirectSubfolders
+    private var limitFolderTitle = config.limitFolderTitle
+    private var showMediaCount = config.showFolderMediaCount
+
     var sorting = config.getFolderSorting(if (config.showAll) SHOW_ALL else path)
     var dateFormat = config.dateFormat
     var timeFormat = activity.getTimeFormat()
@@ -81,7 +92,13 @@ class MediaAdapter(
         val binding = if (viewType == ITEM_SECTION) {
             ThumbnailSectionBinding.inflate(layoutInflater, parent, false)
         } else if (viewType == ITEM_SUBFOLDER) {
-            ItemTreeFolderBinding.inflate(layoutInflater, parent, false)
+            if (isListViewType) {
+                DirectoryItemListBinding.inflate(layoutInflater, parent, false)
+            } else if (folderStyle == FOLDER_STYLE_SQUARE) {
+                DirectoryItemGridSquareBinding.inflate(layoutInflater, parent, false)
+            } else {
+                DirectoryItemGridRoundedCornersBinding.inflate(layoutInflater, parent, false)
+            }
         } else {
             if (isListViewType) {
                 if (viewType == ITEM_MEDIUM_PHOTO) {
@@ -106,8 +123,11 @@ class MediaAdapter(
             visibleItemPaths.add(tmbItem.path)
         }
 
-        val allowLongPress = (!isAGetIntent || allowMultiplePicks) && tmbItem is Medium
-        holder.bindView(tmbItem, tmbItem is Medium, allowLongPress) { itemView, adapterPosition ->
+        // subfolder tiles click and long-press exactly like folder tiles on the main screen:
+        // tap opens the folder, long press starts selection
+        val isFolderOrMediaItem = tmbItem is Medium || tmbItem is SubfolderItem
+        val allowLongPress = (!isAGetIntent || allowMultiplePicks) && isFolderOrMediaItem
+        holder.bindView(tmbItem, isFolderOrMediaItem, allowLongPress) { itemView, adapterPosition ->
             when (tmbItem) {
                 is Medium -> setupThumbnail(itemView, tmbItem)
                 is SubfolderItem -> setupSubfolder(itemView, tmbItem)
@@ -130,29 +150,41 @@ class MediaAdapter(
     }
 
     override fun prepareActionMode(menu: Menu) {
-        val selectedItems = getSelectedItems()
-        if (selectedItems.isEmpty()) {
+        val selectedMedia = getSelectedItems()
+        val selectedFolders = getSelectedFolderPaths()
+        if (selectedMedia.isEmpty() && selectedFolders.isEmpty()) {
             return
         }
 
-        val isOneItemSelected = isOneItemSelected()
-        val selectedPaths = selectedItems.map { it.path } as ArrayList<String>
-        val isInRecycleBin = selectedItems.firstOrNull()?.getIsInRecycleBin() == true
-        menu.apply {
-            findItem(R.id.cab_rename).isVisible = !isInRecycleBin
-            findItem(R.id.cab_add_to_favorites).isVisible = !isInRecycleBin
-            findItem(R.id.cab_fix_date_taken).isVisible = !isInRecycleBin
-            findItem(R.id.cab_move_to).isVisible = !isInRecycleBin
-            findItem(R.id.cab_open_with).isVisible = isOneItemSelected
-            findItem(R.id.cab_edit).isVisible = isOneItemSelected
-            findItem(R.id.cab_set_as).isVisible = isOneItemSelected
-            findItem(R.id.cab_resize).isVisible = canResize(selectedItems)
-            findItem(R.id.cab_confirm_selection).isVisible = isAGetIntent && allowMultiplePicks && selectedKeys.isNotEmpty()
-            findItem(R.id.cab_restore_recycle_bin_files).isVisible = selectedPaths.all { it.startsWith(activity.recycleBinPath) }
-            findItem(R.id.cab_create_shortcut).isVisible = isOreoPlus() && isOneItemSelected
+        val hasMedia = selectedMedia.isNotEmpty()
+        val hasFolders = selectedFolders.isNotEmpty()
+        val isOneMediaSelected = selectedMedia.size == 1
+        val isInRecycleBin = selectedMedia.firstOrNull()?.getIsInRecycleBin() == true
 
-            checkHideBtnVisibility(this, selectedItems)
-            checkFavoriteBtnVisibility(this, selectedItems)
+        menu.apply {
+            // media-only operations apply to the selected files only
+            findItem(R.id.cab_open_with).isVisible = isOneMediaSelected
+            findItem(R.id.cab_edit).isVisible = isOneMediaSelected
+            findItem(R.id.cab_set_as).isVisible = isOneMediaSelected
+            findItem(R.id.cab_resize).isVisible = hasMedia && canResize(selectedMedia)
+            findItem(R.id.cab_rotate).isVisible = hasMedia
+            findItem(R.id.cab_share).isVisible = hasMedia
+            findItem(R.id.cab_fix_date_taken).isVisible = hasMedia && !isInRecycleBin
+            findItem(R.id.cab_restore_recycle_bin_files).isVisible = hasMedia && selectedMedia.all { it.path.startsWith(activity.recycleBinPath) }
+
+            // operations that folders support apply to the selected folders only, in mixed
+            // selections each operation touches only the part of the selection it understands
+            findItem(R.id.cab_rename).isVisible = (hasMedia && !isInRecycleBin) || hasFolders
+            findItem(R.id.cab_move_to).isVisible = (hasMedia && !isInRecycleBin) || hasFolders
+            findItem(R.id.cab_copy_to).isVisible = true
+            findItem(R.id.cab_delete).isVisible = true
+            findItem(R.id.cab_properties).isVisible = true
+            findItem(R.id.cab_create_shortcut).isVisible = isOreoPlus() && isOneItemSelected()
+            findItem(R.id.cab_select_all).isVisible = true
+            findItem(R.id.cab_confirm_selection).isVisible = isAGetIntent && allowMultiplePicks && hasMedia
+
+            checkHideBtnVisibility(this, selectedMedia, selectedFolders)
+            checkFavoriteBtnVisibility(this, selectedMedia)
         }
 
         menu.applyHiddenEntryNames(activity, config.getHiddenSelectedImagesMenuItems())
@@ -168,8 +200,8 @@ class MediaAdapter(
             R.id.cab_properties -> showProperties()
             R.id.cab_rename -> checkMediaManagementAndRename()
             R.id.cab_edit -> editFile()
-            R.id.cab_hide -> toggleFileVisibility(true)
-            R.id.cab_unhide -> toggleFileVisibility(false)
+            R.id.cab_hide -> toggleSelectionVisibility(true)
+            R.id.cab_unhide -> toggleSelectionVisibility(false)
             R.id.cab_add_to_favorites -> toggleFavorites(true)
             R.id.cab_remove_from_favorites -> toggleFavorites(false)
             R.id.cab_restore_recycle_bin_files -> restoreFiles()
@@ -189,13 +221,19 @@ class MediaAdapter(
         }
     }
 
-    override fun getSelectableItemCount() = media.filter { it is Medium }.size
+    override fun getSelectableItemCount() = media.count { it is Medium || it is SubfolderItem }
 
     override fun getIsItemSelectable(position: Int) = !isASectionTitle(position)
 
-    override fun getItemSelectionKey(position: Int) = (media.getOrNull(position) as? Medium)?.path?.hashCode()
+    override fun getItemSelectionKey(position: Int) = when (val item = media.getOrNull(position)) {
+        is Medium -> item.path.hashCode()
+        is SubfolderItem -> item.directory.path.hashCode()
+        else -> null
+    }
 
-    override fun getItemKeyPosition(key: Int) = media.indexOfFirst { (it as? Medium)?.path?.hashCode() == key }
+    override fun getItemKeyPosition(key: Int) = media.indexOfFirst {
+        (it is Medium && it.path.hashCode() == key) || (it is SubfolderItem && it.directory.path.hashCode() == key)
+    }
 
     override fun onActionModeCreated() {}
 
@@ -215,18 +253,31 @@ class MediaAdapter(
 
     fun isASectionTitle(position: Int) = media.getOrNull(position) is ThumbnailSection
 
-    // section titles and subfolder rows both take the full row width in grid mode
-    fun isFullSpanItem(position: Int) = isASectionTitle(position) || media.getOrNull(position) is SubfolderItem
+    // only section titles take the full row width in grid mode; subfolder tiles are regular grid cells, same as folders on the main screen
+    fun isFullSpanItem(position: Int) = isASectionTitle(position)
 
-    private fun checkHideBtnVisibility(menu: Menu, selectedItems: ArrayList<Medium>) {
+    private fun checkHideBtnVisibility(menu: Menu, selectedItems: ArrayList<Medium>, selectedFolders: ArrayList<String>) {
+        if (isRPlus() && !isExternalStorageManager()) {
+            menu.findItem(R.id.cab_hide).isVisible = false
+            menu.findItem(R.id.cab_unhide).isVisible = false
+            return
+        }
+
         val isInRecycleBin = selectedItems.firstOrNull()?.getIsInRecycleBin() == true
-        menu.findItem(R.id.cab_hide).isVisible = (!isRPlus() || isExternalStorageManager()) && !isInRecycleBin && selectedItems.any { !it.isHidden() }
-        menu.findItem(R.id.cab_unhide).isVisible = (!isRPlus() || isExternalStorageManager()) && !isInRecycleBin && selectedItems.any { it.isHidden() }
+        val canTouchMedia = selectedItems.isNotEmpty() && !isInRecycleBin
+        menu.findItem(R.id.cab_hide).isVisible =
+            (canTouchMedia && selectedItems.any { !it.isHidden() }) ||
+                selectedFolders.any { !it.doesThisOrParentHaveNoMedia(HashMap(), null) }
+
+        menu.findItem(R.id.cab_unhide).isVisible =
+            (canTouchMedia && selectedItems.any { it.isHidden() }) ||
+                selectedFolders.any { it.doesThisOrParentHaveNoMedia(HashMap(), null) }
     }
 
     private fun checkFavoriteBtnVisibility(menu: Menu, selectedItems: ArrayList<Medium>) {
-        menu.findItem(R.id.cab_add_to_favorites).isVisible = selectedItems.none { it.getIsInRecycleBin() } && selectedItems.any { !it.isFavorite }
-        menu.findItem(R.id.cab_remove_from_favorites).isVisible = selectedItems.none { it.getIsInRecycleBin() } && selectedItems.any { it.isFavorite }
+        val visible = selectedItems.isNotEmpty() && selectedItems.none { it.getIsInRecycleBin() }
+        menu.findItem(R.id.cab_add_to_favorites).isVisible = visible && selectedItems.any { !it.isFavorite }
+        menu.findItem(R.id.cab_remove_from_favorites).isVisible = visible && selectedItems.any { it.isFavorite }
     }
 
     private fun confirmSelection() {
@@ -234,24 +285,81 @@ class MediaAdapter(
     }
 
     private fun showProperties() {
-        if (selectedKeys.size <= 1) {
-            val path = getFirstSelectedItemPath() ?: return
-            PropertiesDialog(activity, path, config.shouldShowHidden)
+        val paths = ArrayList<String>()
+        paths.addAll(getSelectedPaths())
+        paths.addAll(getSelectedFolderPaths())
+        if (paths.isEmpty()) {
+            return
+        }
+
+        if (paths.size == 1) {
+            PropertiesDialog(activity, paths.first(), config.shouldShowHidden)
         } else {
-            val paths = getSelectedPaths()
             PropertiesDialog(activity, paths, config.shouldShowHidden)
         }
     }
 
     private fun checkMediaManagementAndRename() {
         activity.handleMediaManagementPrompt {
-            renameFile()
+            renameSelection()
         }
     }
 
-    private fun renameFile() {
-        val firstPath = getFirstSelectedItemPath() ?: return
+    // folders and files are renamed with their own dialogs; in a mixed selection both are applied
+    private fun renameSelection() {
+        val folderPaths = getSelectedFolderPaths().filter { !config.isFolderProtected(it) } as ArrayList<String>
+        if (folderPaths.isNotEmpty()) {
+            renameFolders(folderPaths) {
+                renameMedia()
+            }
+        } else {
+            renameMedia()
+        }
+    }
 
+    private fun renameFolders(paths: ArrayList<String>, onDone: () -> Unit) {
+        if (paths.size == 1) {
+            val sourcePath = paths.first()
+            val folder = File(sourcePath)
+            if (activity.isAStorageRootFolder(folder.absolutePath)) {
+                activity.toast(com.simplemobiletools.commons.R.string.rename_folder_root)
+                onDone()
+                return
+            }
+
+            val tmb = media.filterIsInstance<SubfolderItem>().firstOrNull { it.directory.path == sourcePath }?.directory?.tmb ?: ""
+            activity.handleLockedFolderOpening(sourcePath) { success ->
+                if (success) {
+                    RenameItemDialog(activity, folder.absolutePath) { newPath ->
+                        ensureBackgroundThread {
+                            try {
+                                val newTmb = File(newPath, tmb.getFilenameFromPath()).absolutePath
+                                activity.directoryDB.updateDirectoryAfterRename(newTmb, newPath.getFilenameFromPath(), newPath, sourcePath)
+                            } catch (e: Exception) {
+                                activity.showErrorToast(e)
+                            }
+                            activity.runOnUiThread {
+                                onDone()
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            RenameItemsDialog(activity, paths) {
+                onDone()
+            }
+        }
+    }
+
+    private fun renameMedia() {
+        val mediaPaths = getSelectedPaths()
+        if (mediaPaths.isEmpty()) {
+            finishActMode()
+            return
+        }
+
+        val firstPath = mediaPaths.first()
         val isSDOrOtgRootFolder = activity.isAStorageRootFolder(firstPath.getParentPath()) && !firstPath.startsWith(activity.internalStoragePath)
         if (isRPlus() && isSDOrOtgRootFolder && !isExternalStorageManager()) {
             activity.toast(com.simplemobiletools.commons.R.string.rename_in_sd_card_system_restriction, Toast.LENGTH_LONG)
@@ -259,7 +367,7 @@ class MediaAdapter(
             return
         }
 
-        if (selectedKeys.size == 1) {
+        if (mediaPaths.size == 1) {
             RenameItemDialog(activity, firstPath) {
                 ensureBackgroundThread {
                     activity.updateDBMediaPath(firstPath, it)
@@ -272,7 +380,7 @@ class MediaAdapter(
                 }
             }
         } else {
-            RenameDialog(activity, getSelectedPaths(), true) {
+            RenameDialog(activity, mediaPaths, true) {
                 enableInstantLoad()
                 listener?.refreshItems()
                 finishActMode()
@@ -321,6 +429,52 @@ class MediaAdapter(
         val isCommonParent = selectedItems.all { parentPath == it.parentPath }
         val isRestrictedDir = activity.isRestrictedWithSAFSdk30(parentPath)
         return isExternalStorageManager() || (isCommonParent && !isRestrictedDir)
+    }
+
+    // folders and files each follow their own hide/unhide flow; both run in a mixed selection
+    private fun toggleSelectionVisibility(hide: Boolean) {
+        val folderPaths = getSelectedFolderPaths()
+        if (getSelectedPaths().isNotEmpty()) {
+            toggleFileVisibility(hide)
+        }
+
+        if (folderPaths.isNotEmpty()) {
+            toggleFoldersVisibility(hide, folderPaths)
+        }
+    }
+
+    private fun toggleFoldersVisibility(hide: Boolean, paths: ArrayList<String>) {
+        if (hide && !config.wasHideFolderTooltipShown) {
+            config.wasHideFolderTooltipShown = true
+            ConfirmationDialog(activity, activity.getString(R.string.hide_folder_description)) {
+                applyFolderVisibility(true, paths)
+            }
+        } else {
+            applyFolderVisibility(hide, paths)
+        }
+    }
+
+    private fun applyFolderVisibility(hide: Boolean, paths: ArrayList<String>) {
+        var remaining = paths.size
+        val taskDone = {
+            activity.runOnUiThread {
+                remaining--
+                if (remaining <= 0) {
+                    listener?.refreshItems()
+                    finishActMode()
+                }
+            }
+        }
+
+        paths.forEach { path ->
+            if (hide) {
+                activity.addNoMedia(path) { taskDone() }
+            } else if (path.containsNoMedia()) {
+                activity.removeNoMedia(path) { taskDone() }
+            } else {
+                taskDone()
+            }
+        }
     }
 
     private fun toggleFileVisibility(hide: Boolean) {
@@ -410,7 +564,7 @@ class MediaAdapter(
     }
 
     private fun copyMoveTo(isCopyOperation: Boolean) {
-        val paths = getSelectedPaths()
+        val paths = getSelectedCopyMovePaths()
 
         val recycleBinPath = activity.recycleBinPath
         val fileDirItems = paths.asSequence().filter { isCopyOperation || !it.startsWith(recycleBinPath) }.map {
@@ -448,6 +602,12 @@ class MediaAdapter(
             return
         }
 
+        val folderItem = media.filterIsInstance<SubfolderItem>().firstOrNull { selectedKeys.contains(it.directory.path.hashCode()) }
+        if (folderItem != null) {
+            createFolderShortcut(folderItem.directory)
+            return
+        }
+
         val manager = activity.getSystemService(ShortcutManager::class.java)
         if (manager.isRequestPinShortcutSupported) {
             val path = getSelectedPaths().first()
@@ -473,6 +633,28 @@ class MediaAdapter(
         }
     }
 
+    private fun createFolderShortcut(dir: Directory) {
+        val manager = activity.getSystemService(ShortcutManager::class.java)
+        if (manager.isRequestPinShortcutSupported) {
+            val drawable = resources.getDrawable(R.drawable.shortcut_image).mutate()
+            activity.getShortcutImage(dir.tmb, drawable) {
+                val intent = Intent(activity, MediaActivity::class.java).apply {
+                    action = Intent.ACTION_VIEW
+                    flags = flags or Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    putExtra(DIRECTORY, dir.path)
+                }
+
+                val shortcut = ShortcutInfo.Builder(activity, dir.path)
+                    .setShortLabel(dir.name)
+                    .setIcon(Icon.createWithBitmap(drawable.convertToBitmap()))
+                    .setIntent(intent)
+                    .build()
+
+                manager.requestPinShortcut(shortcut, null)
+            }
+        }
+    }
+
     private fun fixDateTaken() {
         ensureBackgroundThread {
             activity.fixDateTaken(getSelectedPaths(), true) {
@@ -486,10 +668,10 @@ class MediaAdapter(
         activity.handleMediaManagementPrompt {
             if (config.isDeletePasswordProtectionOn) {
                 activity.handleDeletePasswordProtection {
-                    deleteFiles(config.tempSkipRecycleBin)
+                    deleteSelection(config.tempSkipRecycleBin)
                 }
             } else if (config.tempSkipDeleteConfirmation || config.skipDeleteConfirmation) {
-                deleteFiles(config.tempSkipRecycleBin)
+                deleteSelection(config.tempSkipRecycleBin)
             } else {
                 askConfirmDelete()
             }
@@ -499,24 +681,24 @@ class MediaAdapter(
     private fun askConfirmDelete() {
         val itemsCnt = selectedKeys.size
         val selectedMedia = getSelectedItems()
-        val firstPath = selectedMedia.first().path
-        val fileDirItem = selectedMedia.first().toFileDirItem()
-        val size = fileDirItem.getProperSize(activity, countHidden = true).formatSize()
-        val itemsAndSize = if (itemsCnt == 1) {
-            fileDirItem.mediaStoreId = selectedMedia.first().mediaStoreId
-            "\"${firstPath.getFilenameFromPath()}\" ($size)"
-        } else {
-            val fileDirItems = ArrayList<FileDirItem>(selectedMedia.size)
-            selectedMedia.forEach { medium ->
-                val curFileDirItem = medium.toFileDirItem()
-                fileDirItems.add(curFileDirItem)
+        val folderPaths = getSelectedFolderPaths()
+        val isRecycleBin = selectedMedia.isNotEmpty() && selectedMedia.first().path.startsWith(activity.recycleBinPath)
+
+        val itemsAndSize = when {
+            itemsCnt == 1 && selectedMedia.size == 1 -> {
+                val firstPath = selectedMedia.first().path
+                val size = selectedMedia.first().toFileDirItem().getProperSize(activity, countHidden = true).formatSize()
+                "\"${firstPath.getFilenameFromPath()}\" ($size)"
             }
-            val fileSize = fileDirItems.sumByLong { it.getProperSize(activity, countHidden = true) }.formatSize()
-            val deleteItemsString = resources.getQuantityString(com.simplemobiletools.commons.R.plurals.delete_items, itemsCnt, itemsCnt)
-            "$deleteItemsString ($fileSize)"
+
+            itemsCnt == 1 && folderPaths.isNotEmpty() -> "\"${folderPaths.first().getFilenameFromPath()}\""
+            else -> {
+                val fileSize = selectedMedia.sumByLong { it.toFileDirItem().getProperSize(activity, countHidden = true) }.formatSize()
+                val deleteItemsString = resources.getQuantityString(com.simplemobiletools.commons.R.plurals.delete_items, itemsCnt, itemsCnt)
+                if (selectedMedia.isEmpty()) deleteItemsString else "$deleteItemsString ($fileSize)"
+            }
         }
 
-        val isRecycleBin = firstPath.startsWith(activity.recycleBinPath)
         val baseString =
             if (config.useRecycleBin && !config.tempSkipRecycleBin && !isRecycleBin) com.simplemobiletools.commons.R.string.move_to_recycle_bin_confirmation else com.simplemobiletools.commons.R.string.deletion_confirmation
         val question = String.format(resources.getString(baseString), itemsAndSize)
@@ -529,7 +711,70 @@ class MediaAdapter(
                 config.tempSkipRecycleBin = skipRecycleBin
             }
 
+            deleteSelection(skipRecycleBin)
+        }
+    }
+
+    // files are deleted like before, folders go through the folder deletion flow, both in a mixed selection
+    private fun deleteSelection(skipRecycleBin: Boolean) {
+        val folderPaths = getSelectedFolderPaths()
+        if (folderPaths.isNotEmpty()) {
+            deleteSelectedFolders(folderPaths, skipRecycleBin)
+        }
+
+        if (getSelectedItems().isNotEmpty()) {
             deleteFiles(skipRecycleBin)
+        }
+    }
+
+    private fun deleteSelectedFolders(folderPaths: ArrayList<String>, skipRecycleBin: Boolean) {
+        val SAFPath = folderPaths.firstOrNull { activity.needsStupidWritePermissions(it) } ?: folderPaths.first()
+        activity.handleSAFDialog(SAFPath) {
+            if (!it) {
+                return@handleSAFDialog
+            }
+
+            val sdk30SAFPath = folderPaths.firstOrNull { activity.isAccessibleWithSAFSdk30(it) } ?: folderPaths.first()
+            activity.checkManageMediaOrHandleSAFDialogSdk30(sdk30SAFPath) { granted ->
+                if (!granted) {
+                    return@checkManageMediaOrHandleSAFDialogSdk30
+                }
+
+                actuallyDeleteFolders(folderPaths, skipRecycleBin)
+            }
+        }
+    }
+
+    private fun actuallyDeleteFolders(folderPaths: ArrayList<String>, skipRecycleBin: Boolean) {
+        ensureBackgroundThread {
+            val mediaInside = folderPaths.flatMapTo(ArrayList()) { getMediaFilesInside(it) }
+            val finishDelete = {
+                // rows of files moved into the recycle bin are rewritten by movePathsInRecycleBin, this is a no-op for them
+                mediaInside.forEach { activity.deleteDBPath(it.path) }
+                folderPaths.forEach { path ->
+                    File(path).deleteRecursively()
+                    activity.directoryDB.deleteDirPath(path)
+                }
+
+                activity.runOnUiThread {
+                    listener?.refreshItems()
+                    finishActMode()
+                }
+            }
+
+            val useRecycleBin = config.useRecycleBin && !skipRecycleBin && folderPaths.none { it.startsWith(activity.recycleBinPath) }
+            if (useRecycleBin && mediaInside.isNotEmpty()) {
+                val binPaths = mediaInside.map { it.path } as ArrayList<String>
+                activity.movePathsInRecycleBin(binPaths) { wasSuccess ->
+                    if (wasSuccess) {
+                        finishDelete()
+                    } else {
+                        activity.toast(com.simplemobiletools.commons.R.string.unknown_error_occurred)
+                    }
+                }
+            } else {
+                finishDelete()
+            }
         }
     }
 
@@ -554,7 +799,8 @@ class MediaAdapter(
 
                 val fileDirItems = ArrayList<FileDirItem>(selectedKeys.size)
                 val removeMedia = ArrayList<Medium>(selectedKeys.size)
-                val positions = getSelectedItemPositions()
+                // folders stay in the list, only removed media rows may be announced as removed
+                val positions = getSelectedItemPositions().filter { media.getOrNull(it) is Medium } as ArrayList<Int>
 
                 selectedItems.forEach { medium ->
                     fileDirItems.add(medium.toFileDirItem())
@@ -573,6 +819,35 @@ class MediaAdapter(
     private fun getSelectedItems() = selectedKeys.mapNotNull { getItemWithKey(it) } as ArrayList<Medium>
 
     private fun getSelectedPaths() = getSelectedItems().map { it.path } as ArrayList<String>
+
+    private fun getSelectedFolderPaths() = selectedKeys.mapNotNull { key ->
+        media.filterIsInstance<SubfolderItem>().firstOrNull { it.directory.path.hashCode() == key }?.directory?.path
+    } as ArrayList<String>
+
+    // folders are copied, moved and deleted by taking the media files inside them, same as on the main screen
+    private fun getSelectedCopyMovePaths(): ArrayList<String> {
+        val paths = getSelectedPaths()
+        getSelectedFolderPaths().forEach { folderPath ->
+            getMediaFilesInside(folderPath).mapTo(paths) { it.path }
+        }
+        return paths
+    }
+
+    private fun getMediaFilesInside(folderPath: String): List<FileDirItem> {
+        val showHidden = config.shouldShowHidden
+        val filter = config.filterMedia
+        return File(folderPath).listFiles()
+            ?.filter {
+                it.isFile && it.absolutePath.isMediaFile() && (showHidden || !it.name.startsWith(".")) &&
+                    ((it.isImageFast() && filter and TYPE_IMAGES != 0) ||
+                        (it.isVideoFast() && filter and TYPE_VIDEOS != 0) ||
+                        (it.isGif() && filter and TYPE_GIFS != 0) ||
+                        (it.isRawFast() && filter and TYPE_RAWS != 0) ||
+                        (it.isSvg() && filter and TYPE_SVGS != 0))
+            }
+            ?.map { FileDirItem(it.absolutePath, it.name) }
+            ?: emptyList()
+    }
 
     private fun getFirstSelectedItemPath() = getItemWithKey(selectedKeys.first())?.path
 
@@ -716,36 +991,31 @@ class MediaAdapter(
     }
 
     private fun setupSubfolder(view: View, item: SubfolderItem) {
-        ItemTreeFolderBinding.bind(view).apply {
-            val dir = item.directory
+        val dir = item.directory
+        val isSelected = selectedKeys.contains(dir.path.hashCode())
+        bindDirectoryItem(view).bindDirectoryTile(
+            activity = activity,
+            directory = dir,
+            isSelected = isSelected,
+            isListViewType = isListViewType,
+            folderStyle = folderStyle,
+            scrollHorizontally = scrollHorizontally,
+            animateGifs = animateGifs,
+            cropThumbnails = cropThumbnails,
+            showMediaCount = showMediaCount,
+            limitFolderTitle = limitFolderTitle,
+            groupDirectSubfolders = groupDirectSubfolders,
+            isLocked = config.isFolderProtected(dir.path),
+            isPinned = pinnedFolders.contains(dir.path),
+            isDragging = false,
+            textColor = textColor
+        )
+    }
 
-            treeName.text = dir.name
-            treeName.setTextColor(textColor)
-
-            treeMediaCount.text = "${dir.mediaCnt}"
-            treeMediaCount.setTextColor(textColor)
-            treeMediaCount.beVisibleIf(dir.mediaCnt > 0)
-
-            treeExpandArrow.beGone()
-
-            val thumbnailType = when {
-                dir.tmb.isVideoFast() -> TYPE_VIDEOS
-                dir.tmb.isGif() -> TYPE_GIFS
-                dir.tmb.isRawFast() -> TYPE_RAWS
-                dir.tmb.isSvg() -> TYPE_SVGS
-                else -> TYPE_IMAGES
-            }
-            if (dir.tmb.isNotEmpty()) {
-                activity.loadImage(
-                    thumbnailType, dir.tmb, treeThumbnail, false, false, true, 20, ObjectKey(dir.path)
-                )
-            }
-
-            indentView.layoutParams.width = 0
-            view.setOnClickListener {
-                subfolderClick(dir.path)
-            }
-        }
+    private fun bindDirectoryItem(view: View): DirectoryItemBinding = when {
+        isListViewType -> DirectoryItemListBinding.bind(view).toItemBinding()
+        folderStyle == FOLDER_STYLE_SQUARE -> DirectoryItemGridSquareBinding.bind(view).toItemBinding()
+        else -> DirectoryItemGridRoundedCornersBinding.bind(view).toItemBinding()
     }
 
     override fun onChange(position: Int): String {

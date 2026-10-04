@@ -18,7 +18,23 @@ list contents and where subfolders appear:
 - **Child folders appear inside the media view.** Opening a folder lists its
   media with its child folders on top (recursive — each opened folder shows
   its own children again). Subfolders are scanned from the filesystem, only
-  shown when they directly contain media, and are sorted above the files.
+  shown when they directly contain media and are not hidden, and are sorted
+  above the files. Each child renders with the **same folder tile as the
+  folders list** (shared renderer — same grid/list styles, thumbnail, media
+  count, pin/lock badges) and behaves the same: tap opens it, long press
+  starts selection.
+- **Subfolders are selectable in the contextual menu.** Folder and file
+  selections follow one rule: file-only operations (rotate, edit, share,
+  favorites, …) act on the selected files, folder operations act on the
+  selected folders, and in a mixed selection each operation applies only to
+  the part of the selection it understands (rename/delete/hide/copy/move
+  run both flows).
+- **The toolbar shows a breadcrumb** of the path relative to the folder the
+  screen was opened with, e.g. `Camera / 2024 / Trip`.
+- **Back walks up like a file manager:** it always returns to the parent
+  folder and scrolls back to the folder you came from, stopping at the root
+  folders where it exits to the main list. Decrypted temp copies map back to
+  their real path, so the hierarchy stays consistent.
 - **Mode switch button.** The toolbar button always shows the *current*
   mode: folder icon (folders), double-folder icon (tree), image icon
   (all media). Tapping it cycles to the next mode **in place — no activity

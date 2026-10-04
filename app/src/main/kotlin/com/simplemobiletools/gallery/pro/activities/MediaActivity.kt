@@ -49,6 +49,15 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
 
     // last hidden-item set applied to the toolbar menu, re-shown when the user unhides items
     private var mAppliedHiddenMenuItems = emptySet<String>()
+
+    // the folder this screen was opened with; tree-mode breadcrumbs are relative to it
+    private var mInitialPath = ""
+
+    // the real path behind a decrypted temp copy, so Back and the breadcrumb stay in the real hierarchy
+    private var mDecryptedSourcePath = ""
+
+    // subfolder to reveal after walking up, like a file manager scrolling back to where you came from
+    private var mScrollToChildPath: String? = null
     private var mIsGetImageIntent = false
     private var mIsGetVideoIntent = false
     private var mIsGetAnyIntent = false
@@ -102,10 +111,14 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             finish()
             return
         }
+        mInitialPath = mPath
 
         setupOptionsMenu()
         refreshMenuItems()
         storeStateVariables()
+        if (config.treeMode && !mShowAll) {
+            updateToolbarTitle()
+        }
         updateMaterialActivityViews(binding.mediaCoordinator, binding.mediaGrid, useTransparentNavigation = !config.scrollHorizontally, useTopSearchMenu = true)
 
         if (mShowAll) {
@@ -248,9 +261,11 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         if (binding.mediaMenu.isSearchOpen) {
             binding.mediaMenu.closeSearch()
         } else if (config.treeMode && mPath.isNotEmpty() && mPath != RECYCLE_BIN && mPath != FAVORITES && !mShowAll) {
-            // walk up the hierarchy, stop at included-folder roots or storage roots
-            val parentPath = mPath.getParentPath()
-            val isAtRoot = config.includedFolders.contains(mPath) ||
+            // walk up the hierarchy like a file manager: Back opens the parent folder and scrolls
+            // back to the folder we came from, stopping at included-folder roots or storage roots
+            val currentPath = getRealCurrentPath()
+            val parentPath = currentPath.getParentPath()
+            val isAtRoot = config.includedFolders.contains(currentPath) ||
                 parentPath.isEmpty() ||
                 parentPath == "/" ||
                 isAStorageRootFolder(parentPath)
@@ -258,7 +273,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                 clearKeepScreenOnIfNeeded()
                 super.onBackPressed()
             } else {
-                openSubfolder(parentPath)
+                openSubfolder(parentPath, scrollToChild = currentPath)
             }
         } else {
             clearKeepScreenOnIfNeeded()
@@ -483,11 +498,11 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             initZoomListener()
             MediaAdapter(
                 this, mMedia.clone() as ArrayList<ThumbnailItem>, this, mIsGetImageIntent || mIsGetVideoIntent || mIsGetAnyIntent,
-                mAllowPickingMultiple, mPath, binding.mediaGrid,
-                subfolderClick = { subPath -> openSubfolder(subPath) }
+                mAllowPickingMultiple, mPath, binding.mediaGrid
             ) {
-                if (it is Medium && !isFinishing) {
-                    itemClicked(it)
+                when (it) {
+                    is SubfolderItem -> openSubfolder(it.directory.path)
+                    is Medium -> if (!isFinishing) itemClicked(it)
                 }
             }.apply {
                 setupZoomListener(mZoomListener)
@@ -788,7 +803,8 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         if (viewType == VIEW_TYPE_GRID) {
             val spanCount = config.mediaColumnCnt
             val spacing = config.thumbnailSpacing
-            val useGridPosition = media.firstOrNull() is ThumbnailSection
+            // tree mode prepends subfolder tiles before grouped media, section detection must not depend on the first item
+            val useGridPosition = media.any { it is ThumbnailSection }
 
             var currentGridDecoration: GridSpacingItemDecoration? = null
             if (binding.mediaGrid.itemDecorationCount > 0) {
@@ -959,6 +975,14 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             }
             binding.mediaFastscroller.beVisibleIf(binding.mediaEmptyTextPlaceholder.isGone())
             setupAdapter()
+
+            mScrollToChildPath?.let { childPath ->
+                val childIndex = mMedia.indexOfFirst { it is SubfolderItem && it.directory.path == childPath }
+                if (childIndex >= 0) {
+                    binding.mediaGrid.scrollToPosition(childIndex)
+                }
+                mScrollToChildPath = null
+            }
         }
 
         mLatestMediaId = getLatestMediaId()
@@ -982,18 +1006,21 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
 
         children.filter { it.isDirectory }
             .filter { showHidden || !it.name.startsWith(".") }
+            .filter { showHidden || !File(it, NOMEDIA).exists() }
             .filter { dir -> config.excludedFolders.none { dir.absolutePath.startsWith(it) } }
             .filter { dir -> dir.listFiles()?.any { it.isFile && it.absolutePath.isMediaFile() } == true }
             .forEach { dir ->
                 val mediaCnt = dir.listFiles()?.count { it.isFile && it.absolutePath.isMediaFile() } ?: 0
                 val tmb = dir.listFiles()?.firstOrNull { it.isFile && it.absolutePath.isMediaFile() }?.absolutePath ?: ""
-                result.add(SubfolderItem(Directory(null, dir.absolutePath, "", dir.name, mediaCnt, dir.lastModified(), 0L, dir.lastModified(), getPathLocation(dir.absolutePath), 0, tmb)))
+                val directory = Directory(null, dir.absolutePath, "", dir.name, mediaCnt, dir.lastModified(), 0L, dir.lastModified(), getPathLocation(dir.absolutePath), 0, tmb)
+                directory.subfoldersMediaCount = mediaCnt
+                result.add(SubfolderItem(directory))
             }
         result.sortBy { it.directory.name.lowercase() }
         return result
     }
 
-    private fun openSubfolder(subPath: String) {
+    private fun openSubfolder(subPath: String, scrollToChild: String? = null) {
         if (mPath == subPath) return
         // encrypted child folders ask for the lock secret and open from a decrypted temp copy
         if (config.isFolderEncrypted(subPath)) {
@@ -1015,7 +1042,8 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                     }
 
                     runOnUiThread {
-                        openSubfolderInternal(tempCacheFolder.absolutePath)
+                        mDecryptedSourcePath = subPath
+                        openSubfolderInternal(tempCacheFolder.absolutePath, scrollToChild)
                     }
                 }
             }
@@ -1026,21 +1054,48 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         if (config.isFolderProtected(subPath)) {
             handleLockedFolderOpening(subPath) { success ->
                 if (success) {
-                    openSubfolderInternal(subPath)
+                    openSubfolderInternal(subPath, scrollToChild)
                 }
             }
             return
         }
-        openSubfolderInternal(subPath)
+        openSubfolderInternal(subPath, scrollToChild)
     }
 
-    private fun openSubfolderInternal(subPath: String) {
+    private fun openSubfolderInternal(subPath: String, scrollToChild: String? = null) {
         mPath = subPath
         mMedia.clear()
         binding.mediaGrid.adapter = null
         mLoadedInitialPhotos = false
+        mScrollToChildPath = scrollToChild
         getMedia()
-        binding.mediaMenu.getToolbar()?.title = subPath.getFilenameFromPath()
+        updateToolbarTitle()
+    }
+
+    // decrypted folders are browsed from a temp copy; map them back to their real path for navigation and the breadcrumb
+    private fun getRealCurrentPath(): String {
+        val tempPath = File(cacheDir, "temp_decrypted").absolutePath
+        return if (mPath.startsWith("$tempPath/") && mDecryptedSourcePath.isNotEmpty()) {
+            mDecryptedSourcePath
+        } else {
+            mPath
+        }
+    }
+
+    // tree mode shows the path from the initially opened folder down to the current one, like a file manager breadcrumb
+    private fun updateToolbarTitle() {
+        val displayPath = getRealCurrentPath()
+        val title = if (config.treeMode && mInitialPath.isNotEmpty() && displayPath.startsWith(mInitialPath)) {
+            if (displayPath == mInitialPath) {
+                getFolderNameFromPath(mInitialPath)
+            } else {
+                val subPath = displayPath.substring(mInitialPath.length).trimStart('/')
+                "${getFolderNameFromPath(mInitialPath)} / ${subPath.replace("/", " / ")}"
+            }
+        } else {
+            getFolderNameFromPath(displayPath)
+        }
+        binding.mediaMenu.getToolbar().title = title
     }
 
     // temporary "keep screen on" from the media menu: only lasts while this screen is visible
