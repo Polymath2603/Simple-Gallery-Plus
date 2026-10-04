@@ -139,6 +139,16 @@
         android:title="@string/slideshow"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/menu_keep_screen_on"
+        android:showAsAction="never"
+        android:title="@string/keep_screen_on"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/menu_stop_keeping_screen_on"
+        android:showAsAction="never"
+        android:title="@string/stop_keeping_screen_on"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/menu_settings"
         android:icon="@drawable/ic_settings_cog_vector"
         android:title="@string/settings"

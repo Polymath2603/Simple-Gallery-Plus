@@ -119,9 +119,10 @@ Backups from older versions (separate image/video folder-menu sets) are
 migrated into the single inside-folder set automatically.
 
 ### Keep screen on (temporary)
-The media screen menu has a **Keep screen on** toggle. It only lasts while
-that screen is open — leaving the media view (back press or destroy) reverts
-it automatically.
+The image/video viewer menu has a **Keep screen on** toggle (it used to live
+in the media list menu). It only lasts while the viewer is open — leaving it
+(back or destroy) reverts it automatically. It is also part of the viewer
+menu customization.
 
 ### Accurate video seek bar
 The video players (`VideoFragment` and `VideoPlayerActivity`) now seek with

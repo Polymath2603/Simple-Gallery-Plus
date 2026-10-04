@@ -146,6 +146,12 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
     }
 
     override fun onDestroy() {
+        // the temporary "keep screen on" only lasts while this viewer is open
+        if (isFinishing && config.temporarilyKeepScreenOn) {
+            config.temporarilyKeepScreenOn = false
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+
         super.onDestroy()
         if (intent.extras?.containsKey(IS_VIEW_INTENT) == true) {
             config.temporarilyShowHidden = false
@@ -161,6 +167,7 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
     }
 
     fun refreshMenuItems() {
+        applyKeepScreenOnIfNeeded()
         val currentMedium = getCurrentMedium() ?: return
         currentMedium.isFavorite = mFavoritePaths.contains(currentMedium.path)
         val visibleBottomActions = if (config.bottomActions) config.visibleBottomActions else 0
@@ -169,6 +176,9 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
             val rotationDegrees = getCurrentPhotoFragment()?.mCurrentRotationDegrees ?: 0
             binding.mediumViewerToolbar.menu.apply {
                 showEntryNames(this@ViewPagerActivity, mAppliedHiddenMenuItems)
+
+                findItem(R.id.menu_keep_screen_on).isVisible = !config.temporarilyKeepScreenOn
+                findItem(R.id.menu_stop_keeping_screen_on).isVisible = config.temporarilyKeepScreenOn
 
                 findItem(R.id.menu_show_on_map).isVisible = visibleBottomActions and BOTTOM_ACTION_SHOW_ON_MAP == 0
                 findItem(R.id.menu_slideshow).isVisible = visibleBottomActions and BOTTOM_ACTION_SLIDESHOW == 0
@@ -265,6 +275,8 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
                 R.id.menu_create_shortcut -> createShortcut()
                 R.id.menu_resize -> resizeImage()
                 R.id.menu_settings -> launchSettings()
+                R.id.menu_keep_screen_on -> toggleKeepScreenOn(true)
+                R.id.menu_stop_keeping_screen_on -> toggleKeepScreenOn(false)
                 else -> return@setOnMenuItemClickListener false
             }
             return@setOnMenuItemClickListener true
@@ -611,6 +623,7 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
             showSystemUI(true)
             mSlideshowHandler.removeCallbacksAndMessages(null)
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            applyKeepScreenOnIfNeeded()
             mAreSlideShowMediaVisible = false
 
             if (config.slideshowRandomOrder) {
@@ -696,6 +709,24 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
                 refreshViewPager()
                 updateFavoritePaths(fileDirItems, it)
             }
+        }
+    }
+
+    // temporary "keep screen on" from the viewer menu: only lasts while this viewer is open
+    private fun toggleKeepScreenOn(keepOn: Boolean) {
+        config.temporarilyKeepScreenOn = keepOn
+        if (keepOn) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        refreshMenuItems()
+    }
+
+    // re-applied after video playback or a slideshow touches the flag, so the toggle survives them
+    private fun applyKeepScreenOnIfNeeded() {
+        if (config.temporarilyKeepScreenOn) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 

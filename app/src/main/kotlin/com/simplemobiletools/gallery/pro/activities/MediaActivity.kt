@@ -245,7 +245,6 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
 
     override fun onDestroy() {
         super.onDestroy()
-        clearKeepScreenOnIfNeeded()
         if (config.showAll && !isChangingConfigurations) {
             config.temporarilyShowHidden = false
             config.tempSkipDeleteConfirmation = false
@@ -270,13 +269,11 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                 parentPath == "/" ||
                 isAStorageRootFolder(parentPath)
             if (isAtRoot) {
-                clearKeepScreenOnIfNeeded()
                 super.onBackPressed()
             } else {
                 openSubfolder(parentPath, scrollToChild = currentPath)
             }
         } else {
-            clearKeepScreenOnIfNeeded()
             super.onBackPressed()
         }
     }
@@ -319,9 +316,6 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             findItem(R.id.column_count).isVisible = viewType == VIEW_TYPE_GRID
             findItem(R.id.toggle_filename).isVisible = viewType == VIEW_TYPE_GRID
 
-            findItem(R.id.keep_screen_on).isVisible = !config.temporarilyKeepScreenOn
-            findItem(R.id.stop_keeping_screen_on).isVisible = config.temporarilyKeepScreenOn
-
             // menu customization: one hidden-item set for the inside-folder menu
             mAppliedHiddenMenuItems = config.getHiddenMediaMenuItems()
             applyHiddenEntryNames(this@MediaActivity, mAppliedHiddenMenuItems)
@@ -342,7 +336,6 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             MenuItemVisibilityDialog.Item("create_new_folder", com.simplemobiletools.commons.R.string.create_new_folder),
             MenuItemVisibilityDialog.Item("open_recycle_bin", R.string.open_the_recycle_bin),
             MenuItemVisibilityDialog.Item("temporarily_show_hidden", com.simplemobiletools.commons.R.string.temporarily_show_hidden),
-            MenuItemVisibilityDialog.Item("keep_screen_on", R.string.keep_screen_on),
             MenuItemVisibilityDialog.Item("set_as_default_folder", R.string.set_as_default_folder),
             MenuItemVisibilityDialog.Item("settings", com.simplemobiletools.commons.R.string.settings),
             MenuItemVisibilityDialog.Item("about", com.simplemobiletools.commons.R.string.about)
@@ -384,8 +377,6 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                 R.id.set_as_default_folder -> setAsDefaultFolder()
                 R.id.unset_as_default_folder -> unsetAsDefaultFolder()
                 R.id.slideshow -> startSlideshow()
-                R.id.keep_screen_on -> toggleKeepScreenOn(true)
-                R.id.stop_keeping_screen_on -> toggleKeepScreenOn(false)
                 R.id.customize_menu -> customizeMediaMenu()
                 R.id.settings -> launchSettings()
                 R.id.about -> launchAbout()
@@ -1096,24 +1087,6 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             getFolderNameFromPath(displayPath)
         }
         binding.mediaMenu.getToolbar().title = title
-    }
-
-    // temporary "keep screen on" from the media menu: only lasts while this screen is visible
-    private fun toggleKeepScreenOn(keepOn: Boolean) {
-        config.temporarilyKeepScreenOn = keepOn
-        if (keepOn) {
-            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-        refreshMenuItems()
-    }
-
-    private fun clearKeepScreenOnIfNeeded() {
-        if (config.temporarilyKeepScreenOn) {
-            config.temporarilyKeepScreenOn = false
-            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
     }
 
     override fun tryDeleteFiles(fileDirItems: ArrayList<FileDirItem>, skipRecycleBin: Boolean) {

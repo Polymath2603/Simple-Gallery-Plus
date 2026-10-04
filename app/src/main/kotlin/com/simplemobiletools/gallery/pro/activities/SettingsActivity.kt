@@ -518,7 +518,6 @@ class SettingsActivity : SimpleActivity() {
                 MenuItemVisibilityDialog.Item("create_new_folder", com.simplemobiletools.commons.R.string.create_new_folder),
                 MenuItemVisibilityDialog.Item("open_recycle_bin", R.string.open_the_recycle_bin),
                 MenuItemVisibilityDialog.Item("temporarily_show_hidden", com.simplemobiletools.commons.R.string.temporarily_show_hidden),
-                MenuItemVisibilityDialog.Item("keep_screen_on", R.string.keep_screen_on),
                 MenuItemVisibilityDialog.Item("set_as_default_folder", R.string.set_as_default_folder),
                 MenuItemVisibilityDialog.Item("customize_menu", R.string.menu_customization),
                 MenuItemVisibilityDialog.Item("settings", com.simplemobiletools.commons.R.string.settings),
@@ -599,6 +598,7 @@ class SettingsActivity : SimpleActivity() {
         MenuItemVisibilityDialog.Item("menu_resize", R.string.resize),
         MenuItemVisibilityDialog.Item("menu_show_on_map", R.string.show_on_map),
         MenuItemVisibilityDialog.Item("menu_slideshow", R.string.slideshow),
+        MenuItemVisibilityDialog.Item("menu_keep_screen_on", R.string.keep_screen_on),
         MenuItemVisibilityDialog.Item("menu_settings", com.simplemobiletools.commons.R.string.settings)
     )
 
