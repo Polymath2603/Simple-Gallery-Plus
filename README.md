@@ -89,10 +89,18 @@ same secret. While a folder is encrypted:
 
 ### Menu customization
 Settings → **Menu customization** lets you show/hide individual menu items
-separately for each menu: the main screen menu, the folder (long-press) menu,
-and the media screen menu — with **separate sets for image folders and video
-folders**. Hidden items are stored per menu and included in settings
-import/export.
+separately for each screen context:
+
+1. main screen, no selection
+2. menu inside a folder, no selection
+3. selected folders (long-press CAB)
+4. selected images (long-press CAB)
+5. opened image in the viewer
+6. opened video in the viewer
+
+Hidden items are stored per context and included in settings import/export.
+Backups from older versions (separate image/video folder-menu sets) are
+migrated into the single inside-folder set automatically.
 
 ### Keep screen on (temporary)
 The media screen menu has a **Keep screen on** toggle. It only lasts while

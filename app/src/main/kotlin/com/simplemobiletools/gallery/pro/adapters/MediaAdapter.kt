@@ -154,6 +154,8 @@ class MediaAdapter(
             checkHideBtnVisibility(this, selectedItems)
             checkFavoriteBtnVisibility(this, selectedItems)
         }
+
+        menu.applyHiddenEntryNames(activity, config.getHiddenSelectedImagesMenuItems())
     }
 
     override fun actionItemPressed(id: Int) {

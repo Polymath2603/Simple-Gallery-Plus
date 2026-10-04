@@ -34,6 +34,9 @@ open class PhotoVideoActivity : SimpleActivity(), ViewPagerFragment.FragmentList
 
     var mIsVideo = false
 
+    // last hidden-item set applied to the toolbar menu, re-shown when the set changes (image <-> video)
+    private var mAppliedHiddenMenuItems = emptySet<String>()
+
     private val binding by viewBinding(FragmentHolderBinding::inflate)
 
     public override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,11 +91,17 @@ open class PhotoVideoActivity : SimpleActivity(), ViewPagerFragment.FragmentList
         val visibleBottomActions = if (config.bottomActions) config.visibleBottomActions else 0
 
         binding.fragmentViewerToolbar.menu.apply {
+            showEntryNames(this@PhotoVideoActivity, mAppliedHiddenMenuItems)
+
             findItem(R.id.menu_set_as).isVisible = mMedium?.isImage() == true && visibleBottomActions and BOTTOM_ACTION_SET_AS == 0
             findItem(R.id.menu_edit).isVisible = mMedium?.isImage() == true && mUri?.scheme == "file" && visibleBottomActions and BOTTOM_ACTION_EDIT == 0
             findItem(R.id.menu_properties).isVisible = mUri?.scheme == "file" && visibleBottomActions and BOTTOM_ACTION_PROPERTIES == 0
             findItem(R.id.menu_share).isVisible = visibleBottomActions and BOTTOM_ACTION_SHARE == 0
             findItem(R.id.menu_show_on_map).isVisible = visibleBottomActions and BOTTOM_ACTION_SHOW_ON_MAP == 0
+
+            // menu customization: one hidden-item set for images, another for videos
+            mAppliedHiddenMenuItems = if (mIsVideo) config.getHiddenVideoViewerMenuItems() else config.getHiddenImageViewerMenuItems()
+            applyHiddenEntryNames(this@PhotoVideoActivity, mAppliedHiddenMenuItems)
         }
     }
 
@@ -223,6 +232,7 @@ open class PhotoVideoActivity : SimpleActivity(), ViewPagerFragment.FragmentList
 
         mIsVideo = type == TYPE_VIDEOS
         mMedium = Medium(null, filename, mUri.toString(), mUri!!.path!!.getParentPath(), 0, 0, file.length(), type, 0, false, 0L, 0)
+        refreshMenuItems()
         binding.fragmentViewerToolbar.title = Html.fromHtml("<font color='${Color.WHITE.toHex()}'>${mMedium!!.name}</font>")
         bundle.putSerializable(MEDIUM, mMedium)
 

@@ -79,6 +79,9 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
 
     private var mIsOrientationLocked = false
 
+    // last hidden-item set applied to the toolbar menu, re-shown when the set changes (image <-> video)
+    private var mAppliedHiddenMenuItems = emptySet<String>()
+
     private var mMediaFiles = ArrayList<Medium>()
     private var mFavoritePaths = ArrayList<String>()
     private var mIgnoredPaths = ArrayList<String>()
@@ -165,6 +168,8 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
         runOnUiThread {
             val rotationDegrees = getCurrentPhotoFragment()?.mCurrentRotationDegrees ?: 0
             binding.mediumViewerToolbar.menu.apply {
+                showEntryNames(this@ViewPagerActivity, mAppliedHiddenMenuItems)
+
                 findItem(R.id.menu_show_on_map).isVisible = visibleBottomActions and BOTTOM_ACTION_SHOW_ON_MAP == 0
                 findItem(R.id.menu_slideshow).isVisible = visibleBottomActions and BOTTOM_ACTION_SLIDESHOW == 0
                 findItem(R.id.menu_properties).isVisible = visibleBottomActions and BOTTOM_ACTION_PROPERTIES == 0
@@ -202,6 +207,14 @@ class ViewPagerActivity : SimpleActivity(), ViewPager.OnPageChangeListener, View
                         MenuItem.SHOW_AS_ACTION_IF_ROOM
                     }
                 )
+
+                // menu customization: one hidden-item set for images, another for videos
+                mAppliedHiddenMenuItems = if (currentMedium.isVideo()) {
+                    config.getHiddenVideoViewerMenuItems()
+                } else {
+                    config.getHiddenImageViewerMenuItems()
+                }
+                applyHiddenEntryNames(this@ViewPagerActivity, mAppliedHiddenMenuItems)
             }
 
             if (visibleBottomActions != 0) {

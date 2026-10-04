@@ -41,8 +41,14 @@ const val MAIN_VIEW_MODE = "main_view_mode"               // folders view / tree
 const val VIEW_MODE_FOLDERS = 0
 const val VIEW_MODE_TREE = 1
 const val VIEW_MODE_SHOW_ALL = 2
-const val HIDDEN_MAIN_MENU_ITEMS = "hidden_main_menu_items"
-const val HIDDEN_FOLDER_MENU_ITEMS = "hidden_folder_menu_items"
+// menu customization: one hidden-item set per screen context
+const val HIDDEN_MAIN_MENU_ITEMS = "hidden_main_menu_items"                  // main screen, no selection
+const val HIDDEN_MEDIA_MENU_ITEMS = "hidden_media_menu_items"                // inside a folder, no selection
+const val HIDDEN_FOLDER_MENU_ITEMS = "hidden_folder_menu_items"              // selected folders (CAB)
+const val HIDDEN_SELECTED_IMAGES_MENU_ITEMS = "hidden_selected_images_menu_items"  // selected media (CAB)
+const val HIDDEN_IMAGE_VIEWER_MENU_ITEMS = "hidden_image_viewer_menu_items"  // opened image in viewer
+const val HIDDEN_VIDEO_VIEWER_MENU_ITEMS = "hidden_video_viewer_menu_items"  // opened video in viewer
+// legacy keys from older builds/backups: merged into HIDDEN_MEDIA_MENU_ITEMS on read
 const val HIDDEN_IMAGE_MENU_ITEMS = "hidden_image_menu_items"
 const val HIDDEN_VIDEO_MENU_ITEMS = "hidden_video_menu_items"
 const val TEMPORARILY_KEEP_SCREEN_ON = "temporarily_keep_screen_on"

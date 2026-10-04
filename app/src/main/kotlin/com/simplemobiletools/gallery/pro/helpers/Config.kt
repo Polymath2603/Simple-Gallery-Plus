@@ -631,6 +631,32 @@ class Config(context: Context) : BaseConfig(context) {
     fun getHiddenFolderMenuItems() = getHiddenMenuItems(HIDDEN_FOLDER_MENU_ITEMS)
     fun setHiddenFolderMenuItems(value: Set<String>) = setHiddenMenuItems(HIDDEN_FOLDER_MENU_ITEMS, value)
 
+    fun getHiddenSelectedImagesMenuItems() = getHiddenMenuItems(HIDDEN_SELECTED_IMAGES_MENU_ITEMS)
+    fun setHiddenSelectedImagesMenuItems(value: Set<String>) = setHiddenMenuItems(HIDDEN_SELECTED_IMAGES_MENU_ITEMS, value)
+
+    fun getHiddenImageViewerMenuItems() = getHiddenMenuItems(HIDDEN_IMAGE_VIEWER_MENU_ITEMS)
+    fun setHiddenImageViewerMenuItems(value: Set<String>) = setHiddenMenuItems(HIDDEN_IMAGE_VIEWER_MENU_ITEMS, value)
+
+    fun getHiddenVideoViewerMenuItems() = getHiddenMenuItems(HIDDEN_VIDEO_VIEWER_MENU_ITEMS)
+    fun setHiddenVideoViewerMenuItems(value: Set<String>) = setHiddenMenuItems(HIDDEN_VIDEO_VIEWER_MENU_ITEMS, value)
+
+    // the inside-folder menu had separate image/video sets in older builds; both are merged
+    // into this single key on read, and the legacy prefs are dropped so later edits stick
+    fun getHiddenMediaMenuItems(): Set<String> {
+        val legacy = getHiddenMenuItems(HIDDEN_IMAGE_MENU_ITEMS) + getHiddenMenuItems(HIDDEN_VIDEO_MENU_ITEMS)
+        if (legacy.isNotEmpty()) {
+            setHiddenMenuItems(HIDDEN_MEDIA_MENU_ITEMS, legacy)
+            prefs.edit().remove(HIDDEN_IMAGE_MENU_ITEMS).remove(HIDDEN_VIDEO_MENU_ITEMS).apply()
+        }
+        return getHiddenMenuItems(HIDDEN_MEDIA_MENU_ITEMS)
+    }
+
+    fun setHiddenMediaMenuItems(value: Set<String>) {
+        setHiddenMenuItems(HIDDEN_MEDIA_MENU_ITEMS, value)
+        prefs.edit().remove(HIDDEN_IMAGE_MENU_ITEMS).remove(HIDDEN_VIDEO_MENU_ITEMS).apply()
+    }
+
+    // legacy accessors, kept so settings backups from older versions still import
     fun getHiddenImageMenuItems() = getHiddenMenuItems(HIDDEN_IMAGE_MENU_ITEMS)
     fun setHiddenImageMenuItems(value: Set<String>) = setHiddenMenuItems(HIDDEN_IMAGE_MENU_ITEMS, value)
 

@@ -27,9 +27,11 @@
     <string name="unpin_folder">Unpin folder</string>
     <string name="menu_customization">Menu customization</string>
     <string name="customize_main_menu">Customize main screen menu</string>
-    <string name="customize_folder_menu">Customize folder menu</string>
-    <string name="customize_media_menu_image">Customize media menu (images)</string>
-    <string name="customize_media_menu_video">Customize media menu (videos)</string>
+    <string name="customize_media_menu">Customize menu inside folders</string>
+    <string name="customize_folder_menu">Customize selected folders menu</string>
+    <string name="customize_selected_media_menu">Customize selected media menu</string>
+    <string name="customize_image_viewer_menu">Customize image viewer menu</string>
+    <string name="customize_video_viewer_menu">Customize video viewer menu</string>
     <string name="shown_menu_items">Shown menu items</string>
     <string name="keep_screen_on">Keep screen on</string>
     <string name="stop_keeping_screen_on">Stop keeping screen on</string>

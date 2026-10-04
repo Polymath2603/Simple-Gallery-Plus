@@ -46,6 +46,9 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     private val LAST_MEDIA_CHECK_PERIOD = 3000L
 
     private var mPath = ""
+
+    // last hidden-item set applied to the toolbar menu, re-shown when the user unhides items
+    private var mAppliedHiddenMenuItems = emptySet<String>()
     private var mIsGetImageIntent = false
     private var mIsGetVideoIntent = false
     private var mIsGetAnyIntent = false
@@ -276,6 +279,8 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     private fun refreshMenuItems() {
         val isDefaultFolder = !config.defaultFolder.isEmpty() && File(config.defaultFolder).compareTo(File(mPath)) == 0
 
+        binding.mediaMenu.getToolbar().menu.showEntryNames(this, mAppliedHiddenMenuItems)
+
         binding.mediaMenu.getToolbar().menu.apply {
             findItem(R.id.group).isVisible = !config.scrollHorizontally
 
@@ -302,14 +307,13 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             findItem(R.id.keep_screen_on).isVisible = !config.temporarilyKeepScreenOn
             findItem(R.id.stop_keeping_screen_on).isVisible = config.temporarilyKeepScreenOn
 
-            // per-content-type menu customization: separate hidden-item sets for image vs video folders
-            val hasVideos = mMedia.any { it is Medium && it.isVideo() }
-            applyHiddenEntryNames(this@MediaActivity, if (hasVideos) config.getHiddenVideoMenuItems() else config.getHiddenImageMenuItems())
+            // menu customization: one hidden-item set for the inside-folder menu
+            mAppliedHiddenMenuItems = config.getHiddenMediaMenuItems()
+            applyHiddenEntryNames(this@MediaActivity, mAppliedHiddenMenuItems)
         }
     }
 
     private fun customizeMediaMenu() {
-        val isVideoFolder = mMedia.any { it is Medium && it.isVideo() }
         val items = listOf(
             MenuItemVisibilityDialog.Item("sort", com.simplemobiletools.commons.R.string.sort_by),
             MenuItemVisibilityDialog.Item("filter", R.string.filter_media),
@@ -328,13 +332,8 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             MenuItemVisibilityDialog.Item("settings", com.simplemobiletools.commons.R.string.settings),
             MenuItemVisibilityDialog.Item("about", com.simplemobiletools.commons.R.string.about)
         )
-        val currentHidden = if (isVideoFolder) config.getHiddenVideoMenuItems() else config.getHiddenImageMenuItems()
-        MenuItemVisibilityDialog(this, items, currentHidden) { hidden ->
-            if (isVideoFolder) {
-                config.setHiddenVideoMenuItems(hidden)
-            } else {
-                config.setHiddenImageMenuItems(hidden)
-            }
+        MenuItemVisibilityDialog(this, items, config.getHiddenMediaMenuItems()) { hidden ->
+            config.setHiddenMediaMenuItems(hidden)
             refreshMenuItems()
         }
     }

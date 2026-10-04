@@ -799,6 +799,21 @@
             </RelativeLayout>
 
             <RelativeLayout
+                android:id="@+id/settings_customize_media_menu_holder"
+                style="@style/SettingsHolderTextViewOneLinerStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <com.simplemobiletools.commons.views.MyTextView
+                    android:id="@+id/settings_customize_media_menu"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/customize_media_menu" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
                 android:id="@+id/settings_customize_folder_menu_holder"
                 style="@style/SettingsHolderTextViewOneLinerStyle"
                 android:layout_width="match_parent"
@@ -814,32 +829,47 @@
             </RelativeLayout>
 
             <RelativeLayout
-                android:id="@+id/settings_customize_image_menu_holder"
+                android:id="@+id/settings_customize_selected_media_menu_holder"
                 style="@style/SettingsHolderTextViewOneLinerStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
 
                 <com.simplemobiletools.commons.views.MyTextView
-                    android:id="@+id/settings_customize_image_menu"
+                    android:id="@+id/settings_customize_selected_media_menu"
                     style="@style/SettingsTextLabelStyle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/customize_media_menu_image" />
+                    android:text="@string/customize_selected_media_menu" />
 
             </RelativeLayout>
 
             <RelativeLayout
-                android:id="@+id/settings_customize_video_menu_holder"
+                android:id="@+id/settings_customize_image_viewer_menu_holder"
                 style="@style/SettingsHolderTextViewOneLinerStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
 
                 <com.simplemobiletools.commons.views.MyTextView
-                    android:id="@+id/settings_customize_video_menu"
+                    android:id="@+id/settings_customize_image_viewer_menu"
                     style="@style/SettingsTextLabelStyle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/customize_media_menu_video" />
+                    android:text="@string/customize_image_viewer_menu" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_customize_video_viewer_menu_holder"
+                style="@style/SettingsHolderTextViewOneLinerStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <com.simplemobiletools.commons.views.MyTextView
+                    android:id="@+id/settings_customize_video_viewer_menu"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/customize_video_viewer_menu" />
 
             </RelativeLayout>
 

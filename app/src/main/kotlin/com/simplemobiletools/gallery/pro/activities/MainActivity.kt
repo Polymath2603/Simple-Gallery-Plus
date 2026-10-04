@@ -57,6 +57,9 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     private var mIsSetWallpaperIntent = false
     private var mAllowPickingMultiple = false
     private var mIsThirdPartyIntent = false
+
+    // last hidden-item set applied to the toolbar menu, re-shown when the user unhides items
+    private var mAppliedHiddenMenuItems = emptySet<String>()
     private var mIsGettingDirs = false
     private var mLoadedInitialPhotos = false
     private var mIsPasswordProtectionPending = false
@@ -355,6 +358,8 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     }
 
     private fun refreshMenuItems() {
+        binding.mainMenu.getToolbar().menu.showEntryNames(this, mAppliedHiddenMenuItems)
+
         if (!mIsThirdPartyIntent) {
             binding.mainMenu.getToolbar().menu.apply {
                 findItem(R.id.column_count).isVisible = config.viewTypeFolders == VIEW_TYPE_GRID
@@ -380,7 +385,8 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                     }
                 }
 
-                applyHiddenEntryNames(this@MainActivity, config.getHiddenMainMenuItems())
+                mAppliedHiddenMenuItems = config.getHiddenMainMenuItems()
+                applyHiddenEntryNames(this@MainActivity, mAppliedHiddenMenuItems)
             }
         }
 

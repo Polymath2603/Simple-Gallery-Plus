@@ -127,6 +127,7 @@ open class VideoPlayerActivity : SimpleActivity(), SeekBar.OnSeekBarChangeListen
         }
 
         updateMenuItemColors(binding.videoToolbar.menu, forceWhiteIcons = true)
+        binding.videoToolbar.menu.applyHiddenEntryNames(this, config.getHiddenVideoViewerMenuItems())
         binding.videoToolbar.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
                 R.id.menu_change_orientation -> changeOrientation()
