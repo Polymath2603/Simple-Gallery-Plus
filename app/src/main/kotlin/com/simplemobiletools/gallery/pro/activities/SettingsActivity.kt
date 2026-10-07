@@ -457,6 +457,9 @@ class SettingsActivity : SimpleActivity() {
     // inside a folder, selected folders (CAB), selected media (CAB), image and video viewers
     private fun setupCustomizeMainMenu() {
         binding.settingsCustomizeMainMenuHolder.setOnClickListener {
+            // only items that can appear in the main-screen toolbar menu are customizable here;
+            // items that only exist in other contexts (inside a folder, folder CAB, viewer, etc.)
+            // are managed by their own customization dialogs
             val items = listOf(
                 MenuItemVisibilityDialog.Item("sort", com.simplemobiletools.commons.R.string.sort_by),
                 MenuItemVisibilityDialog.Item("filter", R.string.filter_media),
@@ -466,7 +469,6 @@ class SettingsActivity : SimpleActivity() {
                 MenuItemVisibilityDialog.Item("temporarily_show_excluded", R.string.temporarily_show_excluded),
                 MenuItemVisibilityDialog.Item("set_as_default_folder", R.string.set_as_default_folder),
                 MenuItemVisibilityDialog.Item("create_new_folder", com.simplemobiletools.commons.R.string.create_new_folder),
-                MenuItemVisibilityDialog.Item("open_camera", R.string.open_camera),
                 MenuItemVisibilityDialog.Item("open_recycle_bin", R.string.open_the_recycle_bin),
                 MenuItemVisibilityDialog.Item("column_count", R.string.column_count),
                 MenuItemVisibilityDialog.Item("more_apps_from_us", R.string.more_apps_from_us),
@@ -505,6 +507,9 @@ class SettingsActivity : SimpleActivity() {
 
     private fun setupCustomizeMediaMenu() {
         binding.settingsCustomizeMediaMenuHolder.setOnClickListener {
+            // only items that can appear in the inside-folder toolbar menu are customizable here;
+            // the main-screen, folder-CAB, selected-media-CAB, image-viewer and video-viewer menus
+            // are each managed by their own customization dialogs
             val items = listOf(
                 MenuItemVisibilityDialog.Item("sort", com.simplemobiletools.commons.R.string.sort_by),
                 MenuItemVisibilityDialog.Item("filter", R.string.filter_media),

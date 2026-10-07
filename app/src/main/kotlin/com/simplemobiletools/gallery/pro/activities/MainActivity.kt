@@ -126,6 +126,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         )
 
         binding.directoriesRefreshLayout.setOnRefreshListener { getDirectories() }
+
         storeStateVariables()
         checkWhatsNewDialog()
 
@@ -168,6 +169,14 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 toast(com.simplemobiletools.commons.R.string.no_storage_permissions)
                 finish()
             }
+        }
+    }
+
+    private fun updateContentTopPadding() {
+        binding.directoriesHolder.post {
+            val searchOpen = binding.mainMenu.isSearchOpen
+            val topPadding = if (searchOpen) binding.mainMenu.height else 0
+            binding.directoriesHolder.setPadding(0, topPadding, 0, 0)
         }
     }
 
@@ -414,6 +423,11 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
             if (config.searchAllFilesByDefault) {
                 launchSearchActivity()
             }
+            updateContentTopPadding()
+        }
+
+        binding.mainMenu.onSearchClosedListener = {
+            updateContentTopPadding()
         }
 
         binding.mainMenu.onSearchTextChangedListener = { text ->

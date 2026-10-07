@@ -259,10 +259,18 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     override fun onBackPressed() {
         if (binding.mediaMenu.isSearchOpen) {
             binding.mediaMenu.closeSearch()
-        } else if (config.treeMode && mPath.isNotEmpty() && mPath != RECYCLE_BIN && mPath != FAVORITES && !mShowAll) {
+            return
+        }
+
+        if (config.treeMode && mPath.isNotEmpty() && mPath != RECYCLE_BIN && mPath != FAVORITES && !mShowAll) {
             // walk up the hierarchy like a file manager: Back opens the parent folder and scrolls
-            // back to the folder we came from, stopping at included-folder roots or storage roots
+            // back to the folder we came from, stopping at included-folder roots or storage roots.
+            // Use the real (decrypted) path for navigation so breadcrumbs stay correct.
             val currentPath = getRealCurrentPath()
+            if (currentPath.isEmpty() || currentPath == mInitialPath) {
+                super.onBackPressed()
+                return
+            }
             val parentPath = currentPath.getParentPath()
             val isAtRoot = config.includedFolders.contains(currentPath) ||
                 parentPath.isEmpty() ||
@@ -273,9 +281,10 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             } else {
                 openSubfolder(parentPath, scrollToChild = currentPath)
             }
-        } else {
-            super.onBackPressed()
+            return
         }
+
+        super.onBackPressed()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, resultData: Intent?) {
@@ -355,6 +364,16 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             mLastSearchedText = text
             searchQueryChanged(text)
             binding.mediaRefreshLayout.isEnabled = text.isEmpty() && config.enablePullToRefresh
+        }
+
+        binding.mediaMenu.onSearchOpenListener = {
+            // the AppBarLayout grows when search opens; make sure the content area below it
+            // has enough top padding so the search field and folder title do not overlap the grid
+            updateContentTopPadding()
+        }
+
+        binding.mediaMenu.onSearchClosedListener = {
+            updateContentTopPadding()
         }
 
         binding.mediaMenu.getToolbar().setOnMenuItemClickListener { menuItem ->
@@ -479,8 +498,8 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
 
     private fun getMediaAdapter() = binding.mediaGrid.adapter as? MediaAdapter
 
-    private fun setupAdapter() {
-        if (!mShowAll && isDirEmpty()) {
+    private fun setupAdapter(subfolders: ArrayList<SubfolderItem> = ArrayList()) {
+        if (!mShowAll && isDirEmpty(subfolders)) {
             return
         }
 
@@ -515,6 +534,14 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         }
 
         setupScrollDirection()
+    }
+
+    private fun updateContentTopPadding() {
+        // when search is open the toolbar area is taller; add top padding to the content holder
+        // so the first row of media / subfolder tiles is not hidden behind the search field
+        val searchOpen = binding.mediaMenu.isSearchOpen
+        val topPadding = if (searchOpen) binding.mediaMenu.height else 0
+        binding.mediaHolder.setPadding(0, topPadding, 0, 0)
     }
 
     private fun setupScrollDirection() {
@@ -682,10 +709,15 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         mCurrAsyncTask!!.execute()
     }
 
-    private fun isDirEmpty(): Boolean {
+    private fun isDirEmpty(subfolders: ArrayList<SubfolderItem> = ArrayList()): Boolean {
         return if (mMedia.size <= 0 && config.filterMedia > 0) {
-            // in tree mode the folder can still contain subfolders with media, do not treat it as empty
-            val hasSubfolders = config.treeMode && mPath != FAVORITES && mPath != RECYCLE_BIN && getImmediateSubfolders(mPath).isNotEmpty()
+            // in tree mode the folder can still contain subfolders with media, do not treat it as empty.
+            // If subfolders were already computed by gotMedia(), reuse them instead of re-scanning.
+            val hasSubfolders = if (subfolders.isNotEmpty()) {
+                true
+            } else {
+                config.treeMode && mPath != FAVORITES && mPath != RECYCLE_BIN && getImmediateSubfolders(mPath).isNotEmpty()
+            }
             if (!hasSubfolders) {
                 if (mPath != FAVORITES && mPath != RECYCLE_BIN) {
                     deleteDirectoryIfEmpty()
@@ -942,6 +974,8 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         mIsGettingMedia = false
         checkLastMediaChanged()
 
+        // compute subfolders once and pass them to setupAdapter so isDirEmpty() does not
+        // re-scan the filesystem for the same information
         val subfolders = if (config.treeMode && mPath.isNotEmpty() && mPath != RECYCLE_BIN && !mShowAll) {
             getImmediateSubfolders(mPath)
         } else {
@@ -965,7 +999,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                 binding.mediaEmptyTextPlaceholder.text = getString(R.string.no_media_with_filters)
             }
             binding.mediaFastscroller.beVisibleIf(binding.mediaEmptyTextPlaceholder.isGone())
-            setupAdapter()
+            setupAdapter(subfolders)
 
             mScrollToChildPath?.let { childPath ->
                 val childIndex = mMedia.indexOfFirst { it is SubfolderItem && it.directory.path == childPath }
@@ -987,26 +1021,47 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                 }
             }.start()
         }
-    }    // child folders of the currently opened folder, taken from the filesystem so folders never
-    // show up empty; only folders that directly contain at least one media file are listed
+    }
+
+    // child folders of the currently opened folder, taken from the filesystem so folders never
+    // show up empty; only folders that directly contain at least one media file are listed.
+    // Only the first pass over listFiles() is used: media count, the first media file (for the
+    // thumbnail), and the directory metadata are all extracted from the same listing.
     private fun getImmediateSubfolders(path: String): ArrayList<SubfolderItem> {
         val result = ArrayList<SubfolderItem>()
         val showHidden = config.shouldShowHidden || config.temporarilyShowHidden
         val folder = File(path)
         val children = folder.listFiles() ?: return result
 
-        children.filter { it.isDirectory }
+        // single pass over direct children: collect directories, then scan each directory's
+        // own children once to find media count + first media file (thumbnail)
+        val dirsToCheck = children.filter { it.isDirectory }
             .filter { showHidden || !it.name.startsWith(".") }
             .filter { showHidden || !File(it, NOMEDIA).exists() }
             .filter { dir -> config.excludedFolders.none { dir.absolutePath.startsWith(it) } }
-            .filter { dir -> dir.listFiles()?.any { it.isFile && it.absolutePath.isMediaFile() } == true }
-            .forEach { dir ->
-                val mediaCnt = dir.listFiles()?.count { it.isFile && it.absolutePath.isMediaFile() } ?: 0
-                val tmb = dir.listFiles()?.firstOrNull { it.isFile && it.absolutePath.isMediaFile() }?.absolutePath ?: ""
-                val directory = Directory(null, dir.absolutePath, "", dir.name, mediaCnt, dir.lastModified(), 0L, dir.lastModified(), getPathLocation(dir.absolutePath), 0, tmb)
-                directory.subfoldersMediaCount = mediaCnt
-                result.add(SubfolderItem(directory))
+
+        for (dir in dirsToCheck) {
+            val dirFiles = dir.listFiles() ?: continue
+            var mediaCnt = 0
+            var firstMediaPath: String? = null
+            for (f in dirFiles) {
+                if (f.isFile && f.absolutePath.isMediaFile()) {
+                    mediaCnt++
+                    if (firstMediaPath == null) {
+                        firstMediaPath = f.absolutePath
+                    }
+                }
             }
+            if (mediaCnt == 0) continue
+
+            val directory = Directory(
+                null, dir.absolutePath, "", dir.name, mediaCnt,
+                dir.lastModified(), 0L, dir.lastModified(),
+                getPathLocation(dir.absolutePath), 0, firstMediaPath ?: ""
+            )
+            directory.subfoldersMediaCount = mediaCnt
+            result.add(SubfolderItem(directory))
+        }
         result.sortBy { it.directory.name.lowercase() }
         return result
     }
