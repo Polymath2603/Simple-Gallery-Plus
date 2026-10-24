@@ -16,3 +16,23 @@ Simple-Commons/.gradle/
 Simple-Commons/commons/build/
 Simple-Commons/local.properties
 Simple-Commons/build/
+# --- Agent/AI-CLI private data (2026-10-24) ---
+.claude/
+.claude.json
+.codex/
+.gemini/
+.cursor/
+.windsurf/
+.cline/
+.aider*
+.beads/
+.hermes/
+.openclaw/
+.mcp.json
+.remember/
+tool-keys.env
+provider-keys.env
+.env
+.env.*
+!.env.example
+
