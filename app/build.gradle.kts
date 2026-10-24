@@ -48,6 +48,11 @@ android {
         debug {
             // we cannot change the original package name, else PhotoEditorSDK won't work
             //applicationIdSuffix = ".debug"
+            // Sign debug builds with the same release key (from the gitignored
+            // keystore.properties) so debug installs upgrade over release ones.
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         release {
             isMinifyEnabled = true
